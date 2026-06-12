@@ -111,6 +111,40 @@ python -m pipeline.run "topic" --approve --animate    # everything in one comman
 
 `pipeline.run` keeps a review gate after the plan (omit `--approve` to stop there), supports `--until <stage>`, and resumes from `state.json` if interrupted.
 
+## How it works — what each stage actually does
+
+Each stage writes files into the video's folder (`output/<name>/`); the next stage reads
+them. Nothing is hidden — every intermediate artifact can be opened and inspected.
+
+| Stage | Tool | Input → Output | What happens |
+|---|---|---|---|
+| 1. Shot plan | gpt-4o-mini (or Claude) | rough text → `shot_plan.json` | An LLM breaks the idea into scenes: narration line, image description, motion, voice per scene. This JSON is the single source of truth for everything downstream. ~$0.001. |
+| 2. Images | Qwen / gpt-image-1 / Flux / Pexels | prompts → `images/scene_NN.png` | For each scene, `style_prefix + image_prompt` (with `{character}` placeholders expanded) goes to an image AI, which paints one still frame. Free on Qwen quota. |
+| 2.5 Animate | Wan (DashScope) | still + motion text → `video/scene_NN.mp4` | Wan keeps the people/background from the still and imagines the next ~5 seconds of movement, frame by frame. The costly step — review images first. A failed scene just stays a still. |
+| 3. Voiceover | edge-tts (free) | narration → `audio/scene_NN.mp3` + `.words.json` | Microsoft TTS speaks each line in the scene's voice, and streams back the millisecond each word is spoken — that's how subtitles sync perfectly without any speech recognition. |
+| 4. Music | none (just a file) | `music/<mood>/*.mp3` | A track matching the plan's mood is picked (or `--music <file>`); it's mixed in during assembly. |
+| 5. Assemble | FFmpeg | everything above → `final.mp4` | The robot video editor: see below. |
+
+FFmpeg does four jobs in sequence:
+
+1. **Per-scene clip** — take the scene's Wan clip (looped if narration runs past 5s; or a
+   Ken Burns zoom over the still if there's no clip), attach the scene's mp3, and trim to
+   exactly the narration length + 0.3s. The audio drives all timing — pacing always
+   matches the speech.
+2. **Concatenate** — glue the scene clips back-to-back.
+3. **Captions** — convert the word timestamps into ~4-word subtitle chunks burned onto the
+   pixels, plus `on_screen_text` titles drawn at the top.
+4. **Music mix** — layer the track under the voices at 12% volume and encode `final.mp4`.
+
+```
+text ──LLM──▶ plan ──image AI──▶ stills ──Wan──▶ moving clips
+plan ──TTS──▶ speech + word timings
+ffmpeg: (clips + speech) per scene → glue → burn subtitles → mix music → final.mp4
+```
+
+Because every stage only reads files, any stage can be re-run, swapped (Qwen ↔
+gpt-image-1), or fixed for a single scene without touching the rest.
+
 ## The shot plan format
 
 `shot_plan.json` is the contract every stage consumes. The important fields:
