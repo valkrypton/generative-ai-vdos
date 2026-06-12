@@ -74,7 +74,11 @@ def main() -> None:
         in_path = latest_work_dir()
     else:
         in_path = Path(args.input)
-    if (in_path / "shot_plan.json").is_file():
+    try:
+        is_existing_plan = (in_path / "shot_plan.json").is_file()
+    except OSError:  # long rough-text input exceeds filesystem name limits
+        is_existing_plan = False
+    if is_existing_plan:
         # Existing plan: view, or revise with --change.
         work_dir = in_path
         plan = ShotPlan.model_validate_json((work_dir / "shot_plan.json").read_text())
