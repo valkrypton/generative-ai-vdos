@@ -4,26 +4,19 @@ code,pre{font-family:Menlo,monospace;background:#f4f4f4;font-size:14px}
 pre{padding:14px;overflow-x:auto}
 table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:6px 12px}
 blockquote{border-left:3px solid #999;padding-left:16px;color:#555}</style>
-</head><body><h1>I Built an AI Video Pipeline That Makes Narrated Videos for $0.001 Each — Here's What I Learned</h1>
-<p><em>One text prompt → a finished 1080p video with AI scenes, real motion, multi-voice dialogue in any language, and word-synced captions. Open source, and it runs almost entirely on free tiers.</em></p>
+</head><body><h1>I Built an AI Video Pipeline That Makes Narrated Videos for $0.001 Each</h1>
+<p><em>Text prompt in → finished 1080p video out: AI scenes, real motion, multi-voice dialogue, word-synced captions. Open source, running almost entirely on free tiers.</em></p>
 <blockquote>
-<p><strong>Insert image: <code>messi-ronaldo-cartoon.jpg</code></strong> — cartoon Messi &amp; Ronaldo chatting in a stadium (use as the cover image)</p>
+<p><strong>Insert image: <code>messi-ronaldo-cartoon.jpg</code></strong> (cover)</p>
 </blockquote>
 <hr />
-<p>Last week I typed this into my terminal:</p>
+<p>Last week I typed:</p>
 <pre><code class="language-bash">python -m pipeline.refine &quot;Messi and Ronaldo chat about the World Cup with their friend Awais&quot;
 </code></pre>
-<p>A minute later I was reading a generated shot plan — six scenes, dialogue lines, camera directions, a voice assigned to each character. I asked for one change in plain English ("make Awais 48 and clean-shaven"). Then four more commands, and out came a complete video: cartoon Messi and Ronaldo bantering in a stadium, my self-insert cheering in a Pakistani-flag shirt, three distinct voices, animated motion, burned-in captions, background music.</p>
-<p>The bill for all of it: <strong>about a tenth of a cent.</strong></p>
-<p>That number is not a trick. It's what becomes possible when you connect the right free tiers with ~1,400 lines of Python and let a folder full of files be your orchestration framework. This article walks through how it works — and the five lessons about generative AI APIs I learned the hard way, so you don't have to.</p>
-<h2>The problem with "AI video" in 2026</h2>
-<p>If you want automated video today, your options look like this:</p>
-<ul>
-<li><strong>Premium platforms</strong> (Runway, Kling, Veo via Flow): beautiful output at <strong>$0.50–$5 per clip</strong> — a 10-scene daily video habit costs more than a salary. And most are browser-only: no API, no automation.</li>
-<li><strong>Free browser tools</strong> (Qwen chat, Meta AI, AI Studio): genuinely free, genuinely good — and genuinely manual. Download each image by hand, every day? You've built yourself a job.</li>
-</ul>
-<p>I wanted the third thing: <strong>a real pipeline.</strong> Text in, video out, every step scriptable, humans reviewing only where judgment matters, and a marginal cost near zero.</p>
-<h2>The stack that worked</h2>
+<p>I reviewed the generated shot plan, asked for one change in plain English ("make Awais 48 and clean-shaven"), ran four more commands — and got a complete video: cartoon Messi and Ronaldo bantering in a stadium, three distinct voices, animated motion, burned-in captions, background music.</p>
+<p>Total cost: <strong>about a tenth of a cent.</strong></p>
+<p>Premium AI video platforms charge $0.50–$5 <em>per clip</em> and are mostly browser-only. Free browser tools can't be scripted. I wanted a real pipeline — text in, video out, human review only where it matters. Here's the stack, and the five lessons I learned the hard way.</p>
+<h2>The stack</h2>
 <table>
 <thead>
 <tr>
@@ -44,12 +37,12 @@ blockquote{border-left:3px solid #999;padding-left:16px;color:#555}</style>
 <td><strong>free quota</strong></td>
 </tr>
 <tr>
-<td>Animation: still → 5s motion clip</td>
-<td>Wan 2.2 (same key!)</td>
+<td>Still → 5s motion clip</td>
+<td>Wan 2.2 (same key)</td>
 <td><strong>~1,650s free</strong>, then ~$0.07/clip</td>
 </tr>
 <tr>
-<td>Voiceover + word timestamps</td>
+<td>Voice + word timestamps</td>
 <td>edge-tts</td>
 <td>$0</td>
 </tr>
@@ -60,163 +53,60 @@ blockquote{border-left:3px solid #999;padding-left:16px;color:#555}</style>
 </tr>
 </tbody>
 </table>
-<h3>The deal that makes this possible</h3>
-<p>The quiet hero is <strong>Alibaba Cloud Model Studio</strong>. One API key (sign up in the <strong>Singapore region</strong> — that's where the free tier lives) currently gets a new account:</p>
-<ul>
-<li>a <strong>free image-generation quota</strong> for the Qwen image models — high quality, native 16:9, and the best text-rendering of any model I tested, and</li>
-<li><strong>~1,650 seconds of free video generation credit</strong> (90 days) for the Wan image-to-video models — that's ~330 motion clips, enough for <strong>about 35 fully-animated videos</strong> before you pay a cent.</li>
-</ul>
-<p>After the trial, Wan's cheapest tier runs roughly $0.07–0.10 per 5-second clip — still an order of magnitude under the premium platforms. I had dismissed "free AI" as browser-toy territory until I found this; it's a real, scriptable API with an async job queue, and it's the reason the whole pipeline stays effectively free.</p>
-<h2>Architecture: the folder is the state machine</h2>
+<p>The quiet hero is <strong>Alibaba Cloud Model Studio</strong>: one API key (sign up in the <strong>Singapore region</strong> — that's where the free tier lives) covers both a free image-generation quota for Qwen <em>and</em> ~1,650 seconds of free Wan video credit — roughly <strong>35 fully-animated videos before you pay a cent</strong>. After that, the cheapest tier is ~$0.07–0.10 per clip — still 10× under the premium platforms, through a real scriptable API.</p>
+<h2>Architecture: a folder is the state machine</h2>
 <pre><code>output/my-video/
   shot_plan.json        ← the contract every stage consumes
-  images/scene_00.png   ← stage 2
-  video/scene_00.mp4    ← stage 2.5 (optional motion)
-  audio/scene_00.mp3    ← stage 3 (+ scene_00.words.json — word timestamps)
-  final.mp4             ← stage 4
+  images/scene_00.png
+  video/scene_00.mp4    ← optional motion
+  audio/scene_00.mp3    ← + scene_00.words.json (word timestamps)
+  final.mp4
 </code></pre>
-<p>No orchestration framework, no queue, no database. Every stage reads files and writes files. Resume after a crash = look at what exists. Redo one bad scene = delete one file. Swap an image provider = nothing else notices.</p>
-<p>Two design choices carry the whole thing:</p>
-<ol>
-<li><strong>The shot plan is a pydantic schema, and the LLM physically cannot violate it.</strong> <code>response_format=ShotPlan</code> makes the API constrain generation to the schema — there is no "model returned broken JSON" failure mode, ever.</li>
-<li><strong>A human review gate sits between cheap and expensive.</strong> The plan costs $0.001; the assets cost real quota. You read the plan, fix it in plain English (<code>--change "make the rabbit grey"</code>), and only then generate.</li>
-</ol>
-<p>Now, the lessons.</p>
-<h2>Lesson 1: LLMs cannot repeat themselves — enforce consistency in code</h2>
-<p>My first videos had an embarrassing flaw: <strong>characters changed clothes between scenes.</strong> Pink frock in scene 1, yellow dress in scene 3, same girl.</p>
-<p>The cause is structural: every scene's image is generated independently — the image model never sees the other scenes. If a prompt says "the girl", the model invents a new girl.</p>
-<p>The obvious fix — instruct the LLM to repeat each character's full description verbatim in every scene — <strong>failed, repeatedly.</strong> Even when I explicitly asked it to paste "a mid-30s man wearing a black zip-up hoodie, dark blue jeans and white sneakers" into all seven scenes, it kept the face and silently dropped the clothing in six of them. LLMs paraphrase. It is what they are.</p>
-<p>What worked: stop trusting the model with repetition.</p>
-<pre><code class="language-json">&quot;characters&quot;: [
-  {&quot;name&quot;: &quot;thief&quot;, &quot;description&quot;: &quot;a mid-30s man with short black hair and stubble,
-    wearing a black zip-up hoodie, dark blue jeans and white sneakers&quot;}
-],
-&quot;scenes&quot;: [
-  {&quot;image_prompt&quot;: &quot;{thief} crouching by the locker, picking the lock&quot;}
-]
+<p>No framework, no queue, no database. Every stage reads and writes files; redoing one bad scene means deleting one file. The plan is a pydantic schema and the LLM is <em>forced</em> to match it (<code>response_format=ShotPlan</code>) — broken-JSON failures simply can't happen. A human review gate sits between the cheap step (the $0.001 plan) and the expensive ones.</p>
+<h2>Lesson 1: LLMs can't repeat themselves — enforce consistency in code</h2>
+<p>My first videos had characters <strong>changing clothes between scenes</strong>. Each scene's image is generated independently — say "the girl" and the model invents a new girl every time.</p>
+<p>Asking the LLM to repeat the full description verbatim in every scene <strong>failed even when explicitly instructed</strong> — it kept the face and dropped the clothes in 6 of 7 scenes. LLMs paraphrase; it's what they are.</p>
+<p>The fix: characters are defined once, scenes say <code>{thief}</code>, and <strong>code substitutes the full description deterministically</strong>:</p>
+<pre><code class="language-json">&quot;characters&quot;: [{&quot;name&quot;: &quot;thief&quot;, &quot;description&quot;: &quot;a mid-30s man with short black hair
+  and stubble, wearing a black zip-up hoodie, dark blue jeans and white sneakers&quot;}],
+&quot;scenes&quot;: [{&quot;image_prompt&quot;: &quot;{thief} crouching by the locker, picking the lock&quot;}]
 </code></pre>
-<p>The LLM writes <code>{thief}</code>; <strong>code substitutes the full description into every scene deterministically.</strong> Consistency went from a hope to a guarantee:</p>
 <blockquote>
-<p><strong>Insert image: <code>thief-consistency.jpg</code></strong> — the same man, same outfit, across three independently-generated scenes</p>
+<p><strong>Insert image: <code>thief-consistency.jpg</code></strong> — same man, same outfit, three independently generated scenes</p>
 </blockquote>
-<p><strong>The principle: if a model behavior matters, make it a code path, not a prompt instruction.</strong></p>
-<p>And when the story <em>wants</em> a change — the boy wears pajamas at home but a uniform at school —
-you don't fight the system, you use it: define one character entry <strong>per look</strong>, sharing the
-same face and hair:</p>
-<pre><code class="language-json">&quot;characters&quot;: [
-  {&quot;name&quot;: &quot;boy_home&quot;,   &quot;description&quot;: &quot;an 8-year-old boy with short brown hair and freckles, wearing blue striped pajamas&quot;},
-  {&quot;name&quot;: &quot;boy_school&quot;, &quot;description&quot;: &quot;an 8-year-old boy with short brown hair and freckles, wearing a navy school uniform with a red tie&quot;}
-]
-</code></pre>
-<p>Morning scenes reference <code>{boy_home}</code>, school scenes <code>{boy_school}</code> — the face stays
-identical because that part of the text is identical, and the outfit changes exactly when
-you say so. Same trick for location changes: keep the setting description in the scene
-prompts as consistent (or as varied) as the story needs — drift is always a choice, never
-an accident.</p>
+<p>Need an <em>intentional</em> outfit change (pajamas → school uniform)? Define one entry per look with the same face: <code>{boy_home}</code>, <code>{boy_school}</code>. Drift becomes a choice, never an accident.</p>
+<p><strong>If a model behavior matters, make it a code path, not a prompt instruction.</strong></p>
 <h2>Lesson 2: image models draw your negations</h2>
-<p>I needed a clean-shaven character. The sequence of failures:</p>
-<ol>
-<li>Prompt: "clean-shaven" → beard.</li>
-<li>Prompt: "no beard, no mustache" → a <strong>fuller</strong> beard.</li>
-<li>Prompt: "completely smooth bare shaved face" → beard, now grey.</li>
-</ol>
-<p>Diffusion models don't parse negation. The tokens "beard" and "mustache" become conditioning, and the model draws what it's conditioned on. The actual mechanism for exclusion is the <strong>negative prompt parameter</strong> — a separate field that steers generation <em>away</em> from tokens.</p>
-<p>And when even that loses to a model's prior (Qwen is deeply convinced middle-aged Pakistani men have beards), the escalation is a more instruction-following model for that one image. gpt-image-1 got it right on the first try, for two cents.</p>
+<p>I needed a clean-shaven character. "Clean-shaven" → beard. <strong>"No beard, no mustache" → a fuller beard.</strong> Diffusion models don't parse negation — the word "beard" becomes conditioning, and conditioning gets drawn.</p>
+<p>The real mechanism is the <strong>negative prompt parameter</strong>, which steers generation <em>away</em> from tokens. And when even that loses to a model's prior, escalate that one image to a more instruction-following model — gpt-image-1 nailed it first try for $0.02.</p>
 <blockquote>
-<p><strong>Insert image: <code>awais-pair.jpg</code></strong> — finally clean-shaven, consistent across both his scenes</p>
+<p><strong>Insert image: <code>awais-pair.jpg</code></strong> — finally clean-shaven, consistent across scenes</p>
 </blockquote>
-<p>My schema now has <code>negative_prompt</code> per scene, and the fix for a stubborn image is one flag: <code>--scene 4 --backend gpt-image-1</code>.</p>
-<h2>Lesson 3: video APIs are job queues — submit everything, then poll</h2>
-<p>A motion clip takes minutes to render. Sequentially, a 9-scene video would take an hour of waiting. But these APIs are async: submission is instant and returns a task ID.</p>
-<p>So the animation stage <strong>submits all scenes first, then polls them together</strong> — the provider renders in parallel, and nine clips finish in roughly the time of one. It's also fail-soft: a clip that errors or times out simply doesn't exist, and the assembler falls back to a Ken Burns zoom on that scene's still. One bad scene never kills a video.</p>
+<h2>Lesson 3: video APIs are job queues — submit all, then poll</h2>
+<p>A clip takes minutes to render, but <em>submitting</em> is instant and returns a task ID. So the pipeline submits <strong>all scenes first, then polls them together</strong> — nine clips finish in roughly the time of one. And it's fail-soft: a failed clip just means that scene stays a still with a Ken Burns zoom. One bad scene never kills a video.</p>
 <h2>Lesson 4: the best TTS deal in tech is hiding in a browser</h2>
-<p>Microsoft Edge ships a free "Read Aloud" feature backed by hundreds of neural voices. The <code>edge-tts</code> package speaks the same websocket protocol the browser uses — no key, no account, no quota I've ever hit.</p>
-<p>Down that websocket come two streams: the audio, and <strong>WordBoundary events</strong> — the millisecond each word is spoken. That second stream means perfectly synced subtitles with no Whisper pass and no cost. It handles languages beautifully too: one of my test videos is a mother-daughter conversation <strong>in Urdu, with two distinct female voices and correctly rendered right-to-left captions.</strong></p>
+<p>Microsoft Edge's free "Read Aloud" feature is backed by hundreds of neural voices, and the <code>edge-tts</code> package speaks the same websocket protocol the browser does — no key, no account. It streams back the audio <strong>plus the millisecond each word is spoken</strong>, which means perfectly synced captions with zero speech recognition. My favorite test: a mother-daughter dialogue <strong>in Urdu</strong>, two distinct voices, correct right-to-left captions.</p>
 <blockquote>
-<p><strong>Insert image: <code>urdu-captions.jpg</code></strong> — Urdu dialogue, per-character voices, burned-in RTL captions</p>
+<p><strong>Insert image: <code>urdu-captions.jpg</code></strong></p>
 </blockquote>
-<p>(Honest caveat: it's an unofficial API and could break someday. The clean upgrade is Azure Speech — same voices, official, 500k free chars/month — and stage isolation means that's a one-file change.)</p>
+<p>(It's unofficial and could break someday; the clean upgrade is Azure Speech — same voices, 500k free chars/month — and it would touch exactly one file.)</p>
 <h2>Lesson 5: FFmpeg is the only video editor you need</h2>
-<p>The last stage is four local FFmpeg passes:</p>
-<ol>
-<li><strong>Per-scene clips</strong> — the motion clip looped and trimmed to the narration's exact length (<strong>audio drives all timing</strong> — pacing always matches speech), or a <code>zoompan</code> Ken Burns effect when there's no clip.</li>
-<li><strong>Concat</strong> — glue scenes without re-encoding.</li>
-<li><strong>Captions</strong> — word timestamps → 4-word SRT chunks → burned in via libass; scene titles via <code>drawtext</code>.</li>
-<li><strong>Music</strong> — ducked to 12% under the voice with <code>amix</code>, encode, done.</li>
-</ol>
-<p>One trap for macOS users: Homebrew's default <code>ffmpeg</code> is built <strong>without libass</strong> — the subtitles filter literally doesn't exist. You want <code>ffmpeg-full</code>.</p>
-<h3>Background music: free, and smarter than you'd expect</h3>
-<p>Music needs no AI at all, but a small design choice makes it feel intelligent: the shot-plan
-LLM picks a one-word <code>music_mood</code> for every video (calm, upbeat, dramatic, chill...), and the
-assembler grabs a random track from the matching <code>music/&lt;mood&gt;/</code> folder — so a kids' story
-automatically gets gentle piano while a heist video gets tension. Want a specific track for
-one video? <code>--music path/to/track.mp3</code> overrides everything.</p>
-<p>Where to get tracks legally for $0:</p>
-<ul>
-<li><strong>YouTube Audio Library</strong> (in YouTube Studio) — the safest for monetized channels; most
-  tracks need no attribution and carry zero copyright-claim risk.</li>
-<li><strong>Pixabay Music</strong> — free for commercial use, no attribution.</li>
-<li><strong>Kevin MacLeod / incompetech.com</strong> — a legendary catalog of ~2,000 tracks under CC-BY:
-  free for anything, but you <strong>must credit him in the video description</strong>. Forgetting
-  attribution on CC-BY music is the most common licensing mistake on YouTube — put the
-  credit line in a file next to the tracks so you never lose it.</li>
-</ul>
-<p>The mix itself is one FFmpeg filter: loop the track for the video's length, drop it to 12%
-volume so it never fights the narration, <code>amix</code> the two streams, end with the video. Ten
-lines of arguments, zero dollars, and the difference between "TTS demo" and "watchable video"
-is bigger than any other free upgrade in the pipeline.</p>
-<blockquote>
-<p><strong>Insert image: <code>space-friends.jpg</code></strong> — the pipeline does photorealistic styles too: a space-facts reel, fully animated</p>
-</blockquote>
-<h2>What a video actually costs</h2>
-<p>A 6-scene, ~35 second animated video:</p>
-<table>
-<thead>
-<tr>
-<th>Item</th>
-<th>Cost</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Shot plan + 2 revisions</td>
-<td>~$0.003</td>
-</tr>
-<tr>
-<td>6 images (Qwen)</td>
-<td>$0</td>
-</tr>
-<tr>
-<td>6 motion clips (Wan)</td>
-<td>$0 on free credit (later ~$0.45)</td>
-</tr>
-<tr>
-<td>2-voice dialogue + captions</td>
-<td>$0</td>
-</tr>
-<tr>
-<td>Assembly + music</td>
-<td>$0</td>
-</tr>
-<tr>
-<td><strong>Total</strong></td>
-<td><strong>~$0.003 — later, under $0.50</strong></td>
-</tr>
-</tbody>
-</table>
-<h2>Try it yourself</h2>
-<p>Everything is open source: <strong><a href="https://github.com/awais786/generative-ai-vdos">github.com/awais786/generative-ai-vdos</a></strong></p>
-<pre><code class="language-bash">git clone git@github.com:awais786/generative-ai-vdos.git
-cd generative-ai-vdos
-make install      # ffmpeg + venv + dependencies + .env template
+<p>Four local passes: per-scene clips (the motion clip looped and trimmed to the narration's exact length — <strong>audio drives all timing</strong>), concat, captions burned in via libass, and music ducked to 12% under the voice.</p>
+<p>Music needs no AI but feels smart: the LLM picks a one-word <code>music_mood</code> per video, and the assembler grabs a matching track from <code>music/&lt;mood&gt;/</code>. Free sources: <strong>YouTube Audio Library</strong> (safest for monetized channels), <strong>Pixabay</strong> (no attribution), <strong>Kevin MacLeod/incompetech</strong> (CC-BY — credit him in the description, the most-forgotten obligation on YouTube). It's the biggest free quality upgrade in the pipeline.</p>
+<p>macOS trap: Homebrew's default <code>ffmpeg</code> lacks libass — captions need <code>ffmpeg-full</code>.</p>
+<h2>The bill</h2>
+<p>6-scene animated video: plan ~$0.003 + images $0 + clips $0 (free credit) + voice/captions/assembly $0 = <strong>~$0.003</strong>. After the free credits: under $0.50.</p>
+<h2>Try it</h2>
+<p><strong><a href="https://github.com/awais786/generative-ai-vdos">github.com/awais786/generative-ai-vdos</a></strong></p>
+<pre><code class="language-bash">git clone git@github.com:awais786/generative-ai-vdos.git &amp;&amp; cd generative-ai-vdos
+make install      # ffmpeg + venv + deps + .env template
 make example      # renders a bundled example video — $0, no API keys needed
 </code></pre>
-<p>Then add two keys — OpenAI (plans, ~$0.001 each) and <a href="https://modelstudio.console.alibabacloud.com">Alibaba Cloud Model Studio</a> (images + animation, Singapore region for the free tier) — and:</p>
-<pre><code class="language-bash">python -m pipeline.refine &quot;your video idea&quot;     # review &amp; iterate on the plan
-python -m pipeline.images                       # inspect before spending credit
-python -m pipeline.video                        # animate
+<p>Add two keys (OpenAI + Alibaba Model Studio, Singapore region), then:</p>
+<pre><code class="language-bash">python -m pipeline.refine &quot;your video idea&quot;
+python -m pipeline.images &amp;&amp; python -m pipeline.video
 python -m pipeline.voiceover &amp;&amp; python -m pipeline.assemble
 </code></pre>
-<p>The provider system makes new backends a one-file change — if you find a better free image or video API, a PR would make my day.</p>
+<p>Backends are one-file plugins — if you find a better free image or video API, a PR would make my day.</p>
 <hr />
-<p><em>Built with Claude Code over a few evenings of generating, breaking, and fixing — every lesson above was learned from an actual failed video.</em></p></body></html>
+<p><em>Every lesson above was learned from an actual failed video.</em></p></body></html>
