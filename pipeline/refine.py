@@ -1,17 +1,18 @@
 """Refine a rough idea into a shot plan, review it in the terminal, iterate with feedback.
 
 Usage:
-    # 1. New plan from rough text -> output/<timestamp>/shot_plan.json + summary:
+    # 1. New plan from rough text -> output/<title-slug>/shot_plan.json + summary:
     python -m pipeline.refine "two friends talk about stars at night, urdu voices"
+    #    (folder is named from the generated title, e.g. output/stars-at-night/)
 
     # 2. View the current plan again:
-    python -m pipeline.refine output/20260612-234500
+    python -m pipeline.refine output/stars-at-night
 
     # 3. Revise it with feedback (AI rewrites the plan, keeps the rest intact):
-    python -m pipeline.refine output/20260612-234500 --change "make the mom younger"
+    python -m pipeline.refine output/stars-at-night --change "make the mom younger"
 
     # 4. When happy, generate:
-    python -m pipeline.images output/20260612-234500
+    python -m pipeline.images output/stars-at-night
 """
 import argparse
 import json
@@ -81,11 +82,16 @@ def main() -> None:
                      "python -m pipeline.refine output/my-video --change \"...\"")
         import time
 
+        from .run import slugify
         from .script_agent import generate_shot_plan
-        work_dir = Path("output") / (args.name or time.strftime("%Y%m%d-%H%M%S"))
-        work_dir.mkdir(parents=True, exist_ok=True)
         print(f"generating plan ({args.model})...")
         plan = generate_shot_plan(args.input, model=args.model)
+        # Folder named after the generated title, e.g. output/the-thief-act/
+        name = args.name or slugify(plan.title)[:40].strip("-") or time.strftime("%Y%m%d-%H%M%S")
+        work_dir = Path("output") / name
+        if work_dir.exists():  # same title generated before — keep both
+            work_dir = Path("output") / f"{name}-{time.strftime('%H%M%S')}"
+        work_dir.mkdir(parents=True, exist_ok=True)
         (work_dir / "shot_plan.json").write_text(plan.model_dump_json(indent=2))
         # mark the plan stage done so pipeline.run can also resume this dir
         (work_dir / "state.json").write_text(json.dumps({"done": ["plan"]}, indent=2))
