@@ -42,14 +42,18 @@ def get_provider(name: Optional[str] = None) -> ImageProvider:
 
 
 def generate_scene_image(
-    plan: ShotPlan, index: int, out_dir: Path, primary: ImageProvider
+    plan: ShotPlan, index: int, out_dir: Path, primary: ImageProvider,
+    fallback: bool = True,
 ) -> Tuple[Path, ImageProvider]:
-    """Generate one scene's image, falling back through remaining providers on failure."""
+    """Generate one scene's image. With fallback (auto-picked backend), failures
+    fall through the remaining providers; an explicitly forced backend fails loudly."""
     scene = plan.scenes[index]
     path = out_dir / f"scene_{index:02d}.png"
     scene_prompt = plan.expand(scene.image_prompt)
     prompt = f"{plan.style_prefix}, {scene_prompt}"
-    chain = [primary] + [p for p in PROVIDERS if p is not primary and p.available()]
+    chain = [primary]
+    if fallback:
+        chain += [p for p in PROVIDERS if p is not primary and p.available()]
     last_error = None
     for provider in chain:
         try:
@@ -57,8 +61,9 @@ def generate_scene_image(
             return path, provider
         except Exception as e:
             last_error = e
-            print(f"  images: scene {index + 1} via {provider.name} failed ({e}); trying next")
-    raise RuntimeError(f"all image backends failed for scene {index + 1}: {last_error}")
+            more = "; trying next" if provider is not chain[-1] else ""
+            print(f"  images: scene {index + 1} via {provider.name} failed ({e}){more}")
+    raise RuntimeError(f"image generation failed for scene {index + 1}: {last_error}")
 
 
 def generate_images(plan: ShotPlan, out_dir: Path, backend: Optional[str] = None) -> List[Path]:
@@ -72,7 +77,7 @@ def generate_images(plan: ShotPlan, out_dir: Path, backend: Optional[str] = None
             print(f"    scene {i}: {', '.join(chars) if chars else '-'}")
     paths = []
     for i in range(len(plan.scenes)):
-        path, used = generate_scene_image(plan, i, out_dir, primary)
+        path, used = generate_scene_image(plan, i, out_dir, primary, fallback=backend is None)
         note = "" if used is primary else f" (fell back to {used.name})"
         print(f"  images: scene {i + 1}/{len(plan.scenes)}{note}")
         paths.append(path)

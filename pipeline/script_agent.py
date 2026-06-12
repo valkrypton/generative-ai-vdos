@@ -3,6 +3,8 @@
 Provider is picked by the model name: "claude-*" uses Anthropic (ANTHROPIC_API_KEY),
 "gpt-*" uses OpenAI (OPENAI_API_KEY).
 """
+import os
+
 from .schema import ShotPlan
 
 SYSTEM = """You are a scriptwriter for a faceless YouTube channel. Given a topic or rough
@@ -57,6 +59,10 @@ Dialogue and voices:
   ur-PK-AsadNeural (Urdu male), hi-IN-SwaraNeural (Hindi female).
 - Match the voice language to the narration language.
 """
+
+
+def default_model() -> str:
+    return "claude-haiku-4-5" if os.environ.get("ANTHROPIC_API_KEY") else "gpt-4o-mini"
 
 
 def _parse_with_llm(user_content: str, model: str) -> ShotPlan:

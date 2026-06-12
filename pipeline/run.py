@@ -8,7 +8,6 @@ Usage:
 """
 import argparse
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -50,9 +49,10 @@ def main() -> None:
     parser.add_argument("topic", help="Topic or rough script")
     parser.add_argument("--approve", action="store_true",
                         help="Proceed past the shot-plan review gate")
-    parser.add_argument("--voice", default="en-US-AndrewNeural")
-    default_model = "claude-haiku-4-5" if os.environ.get("ANTHROPIC_API_KEY") else "gpt-4o-mini"
-    parser.add_argument("--model", default=default_model)
+    parser.add_argument("--voice", default=None,
+                        help="Narrator voice (default: voiceover.DEFAULT_VOICE)")
+    from .script_agent import default_model
+    parser.add_argument("--model", default=default_model())
     parser.add_argument("--out", default="output")
     parser.add_argument("--music-dir", default="music")
     parser.add_argument("--name", default=None,

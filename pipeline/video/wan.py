@@ -15,9 +15,8 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
+from ..env import dashscope_base_url
 from .base import VideoProvider
-
-DEFAULT_BASE_URL = "https://dashscope-intl.aliyuncs.com/api/v1"
 
 MODEL = "wan2.2-i2v-flash"  # cheapest i2v tier, silent clips
 RESOLUTION = "720P"         # assembly upscales to 1080p
@@ -26,15 +25,9 @@ MAX_DURATION = 5            # seconds — hard cap per clip
 
 class WanProvider(VideoProvider):
     name = "wan-i2v"
-    cost_note = "free trial credit on Alibaba Model Studio intl, then ~$0.10-0.25 per 5s clip"
 
     def available(self) -> bool:
         return bool(os.environ.get("DASHSCOPE_API_KEY"))
-
-    def _base(self) -> str:
-        url = os.environ.get("DASHSCOPE_API_URL") or os.environ.get(
-            "DASHSCOPE_BASE_URL") or DEFAULT_BASE_URL
-        return url.rstrip("/")
 
     def _headers(self) -> dict:
         return {"Authorization": f"Bearer {os.environ['DASHSCOPE_API_KEY']}"}
@@ -55,7 +48,7 @@ class WanProvider(VideoProvider):
             },
         }
         req = urllib.request.Request(
-            f"{self._base()}/services/aigc/video-generation/video-synthesis",
+            f"{dashscope_base_url()}/services/aigc/video-generation/video-synthesis",
             data=json.dumps(body).encode(),
             headers={**self._headers(), "Content-Type": "application/json",
                      "X-DashScope-Async": "enable"},
@@ -65,7 +58,7 @@ class WanProvider(VideoProvider):
         return out["output"]["task_id"]
 
     def poll(self, task_id: str) -> Optional[str]:
-        req = urllib.request.Request(f"{self._base()}/tasks/{task_id}", headers=self._headers())
+        req = urllib.request.Request(f"{dashscope_base_url()}/tasks/{task_id}", headers=self._headers())
         with urllib.request.urlopen(req, timeout=60) as resp:
             out = json.loads(resp.read())["output"]
         status = out["task_status"]

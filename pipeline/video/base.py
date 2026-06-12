@@ -14,7 +14,6 @@ from typing import Optional
 
 class VideoProvider(ABC):
     name: str = ""
-    cost_note: str = ""
 
     @abstractmethod
     def available(self) -> bool:

@@ -2,7 +2,6 @@
 <style>body{font-family:Georgia,serif;max-width:740px;margin:40px auto;line-height:1.6;font-size:18px}
 code,pre{font-family:Menlo,monospace;background:#f4f4f4;font-size:14px}
 pre{padding:14px;overflow-x:auto}
-table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:6px 12px}
 blockquote{border-left:3px solid #999;padding-left:16px;color:#555}</style>
 </head><body><h1>I Built an AI Video Pipeline That Makes Narrated Videos for $0.001 Each</h1>
 <p><em>Text prompt in → finished 1080p video out: AI scenes, real motion, multi-voice dialogue, word-synced captions. Open source, running almost entirely on free tiers.</em></p>
@@ -17,42 +16,13 @@ blockquote{border-left:3px solid #999;padding-left:16px;color:#555}</style>
 <p>Total cost: <strong>about a tenth of a cent.</strong></p>
 <p>Premium AI video platforms charge $0.50–$5 <em>per clip</em> and are mostly browser-only. Free browser tools can't be scripted. I wanted a real pipeline — text in, video out, human review only where it matters. Here's the stack, and the five lessons I learned the hard way.</p>
 <h2>The stack</h2>
-<table>
-<thead>
-<tr>
-<th>Stage</th>
-<th>Tool</th>
-<th>Cost</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Idea → shot plan (JSON)</td>
-<td>gpt-4o-mini, structured output</td>
-<td>~$0.001</td>
-</tr>
-<tr>
-<td>Images</td>
-<td>Qwen (Alibaba Cloud)</td>
-<td><strong>free quota</strong></td>
-</tr>
-<tr>
-<td>Still → 5s motion clip</td>
-<td>Wan 2.2 (same key)</td>
-<td><strong>~1,650s free</strong>, then ~$0.07/clip</td>
-</tr>
-<tr>
-<td>Voice + word timestamps</td>
-<td>edge-tts</td>
-<td>$0</td>
-</tr>
-<tr>
-<td>Captions, editing, music</td>
-<td>FFmpeg</td>
-<td>$0, local</td>
-</tr>
-</tbody>
-</table>
+<ul>
+<li><strong>Idea → shot plan (JSON)</strong> — gpt-4o-mini with structured output · <em>~$0.001</em></li>
+<li><strong>Images</strong> — Qwen via Alibaba Cloud · <em>free quota</em></li>
+<li><strong>Still → 5-second motion clip</strong> — Wan 2.2, same API key · <em>~1,650s free, then ~$0.07/clip</em></li>
+<li><strong>Voice + word timestamps</strong> — edge-tts · <em>$0</em></li>
+<li><strong>Captions, editing, music</strong> — FFmpeg · <em>$0, local</em></li>
+</ul>
 <p>The quiet hero is <strong>Alibaba Cloud Model Studio</strong>: one API key (sign up in the <strong>Singapore region</strong> — that's where the free tier lives) covers both a free image-generation quota for Qwen <em>and</em> ~1,650 seconds of free Wan video credit — roughly <strong>35 fully-animated videos before you pay a cent</strong>. After that, the cheapest tier is ~$0.07–0.10 per clip — still 10× under the premium platforms, through a real scriptable API.</p>
 <h2>Architecture: a folder is the state machine</h2>
 <pre><code>output/my-video/

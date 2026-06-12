@@ -16,7 +16,6 @@ Usage:
 """
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -59,7 +58,7 @@ def print_plan(plan: ShotPlan, work_dir: Path) -> None:
 
 def main() -> None:
     load_env()
-    default_model = "claude-haiku-4-5" if os.environ.get("ANTHROPIC_API_KEY") else "gpt-4o-mini"
+    from .script_agent import default_model
     parser = argparse.ArgumentParser(
         description="Rough idea -> reviewable shot plan; iterate with --change")
     parser.add_argument("input", nargs="?", default=None,
@@ -74,7 +73,7 @@ def main() -> None:
                         help="Skip the automatic polish pass when generating a new plan")
     parser.add_argument("--name", default=None,
                         help="Output folder name for a new plan (default: timestamp)")
-    parser.add_argument("--model", default=default_model)
+    parser.add_argument("--model", default=default_model())
     args = parser.parse_args()
 
     if args.input is None:

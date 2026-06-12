@@ -10,7 +10,6 @@ from typing import Optional
 
 class ImageProvider(ABC):
     name: str = ""
-    cost_note: str = ""
 
     @abstractmethod
     def available(self) -> bool:

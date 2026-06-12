@@ -13,7 +13,6 @@ from .util import fit_cover
 
 class GptImageProvider(ImageProvider):
     name = "gpt-image-1"
-    cost_note = "~$0.01-0.02/image at low quality"
 
     def available(self) -> bool:
         return bool(os.environ.get("OPENAI_API_KEY"))

@@ -22,3 +22,11 @@ def load_env() -> None:
             if key and value:
                 os.environ.setdefault(key, value)
         return
+
+
+def dashscope_base_url() -> str:
+    """DashScope endpoint: workspace URL if configured, else the intl default."""
+    url = (os.environ.get("DASHSCOPE_API_URL")
+           or os.environ.get("DASHSCOPE_BASE_URL")
+           or "https://dashscope-intl.aliyuncs.com/api/v1")
+    return url.rstrip("/")

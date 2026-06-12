@@ -6,7 +6,7 @@ for free — no whisper pass needed.
 import asyncio
 import json
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import edge_tts
 
@@ -31,8 +31,9 @@ async def _synth_scene(text: str, voice: str, mp3_path: Path, words_path: Path) 
     words_path.write_text(json.dumps(words, indent=2))
 
 
-def generate_voiceover(plan: ShotPlan, out_dir: Path, voice: str = DEFAULT_VOICE) -> List[Path]:
+def generate_voiceover(plan: ShotPlan, out_dir: Path, voice: Optional[str] = None) -> List[Path]:
     """Writes scene_NN.mp3 + scene_NN.words.json per scene. Returns mp3 paths."""
+    voice = voice or DEFAULT_VOICE
     out_dir.mkdir(parents=True, exist_ok=True)
     mp3_paths = []
 

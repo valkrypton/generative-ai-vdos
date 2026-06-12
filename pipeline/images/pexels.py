@@ -15,7 +15,6 @@ from .util import fit_cover
 
 class PexelsProvider(ImageProvider):
     name = "pexels"
-    cost_note = "free stock photos"
 
     def available(self) -> bool:
         return bool(os.environ.get("PEXELS_API_KEY"))

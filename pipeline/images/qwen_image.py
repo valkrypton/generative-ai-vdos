@@ -13,10 +13,9 @@ from typing import Optional
 
 from PIL import Image
 
+from ..env import dashscope_base_url
 from .base import ImageProvider
 from .util import fit_cover
-
-DEFAULT_BASE_URL = "https://dashscope-intl.aliyuncs.com/api/v1"
 
 MODEL = "qwen-image-plus"
 SIZE = "1664*928"  # native 16:9; fit_cover upscales to 1920x1080
@@ -24,15 +23,13 @@ SIZE = "1664*928"  # native 16:9; fit_cover upscales to 1920x1080
 
 class QwenImageProvider(ImageProvider):
     name = "qwen-image"
-    cost_note = "free quota on Alibaba Model Studio, then ~$0.02/image"
 
     def available(self) -> bool:
         return bool(os.environ.get("DASHSCOPE_API_KEY"))
 
     def generate(self, prompt: str, path: Path, query: Optional[str] = None,
                  negative: Optional[str] = None) -> None:
-        base = (os.environ.get("DASHSCOPE_API_URL")
-                or os.environ.get("DASHSCOPE_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+        base = dashscope_base_url()
         body = {
             "model": MODEL,
             "input": {

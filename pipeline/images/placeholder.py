@@ -12,7 +12,6 @@ from .util import WIDTH, HEIGHT
 
 class PlaceholderProvider(ImageProvider):
     name = "placeholder"
-    cost_note = "$0, no API"
 
     def available(self) -> bool:
         return True

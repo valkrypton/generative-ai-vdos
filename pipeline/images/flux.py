@@ -9,7 +9,6 @@ from .base import ImageProvider
 
 class FluxProvider(ImageProvider):
     name = "flux-schnell"
-    cost_note = "~$0.003/image via Replicate"
 
     def available(self) -> bool:
         if not os.environ.get("REPLICATE_API_TOKEN"):

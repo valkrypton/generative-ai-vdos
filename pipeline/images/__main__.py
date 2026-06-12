@@ -32,7 +32,8 @@ def main() -> None:
 
     if args.scene is not None:
         primary = get_provider(args.backend)
-        path, used = generate_scene_image(plan, args.scene, out_dir, primary)
+        path, used = generate_scene_image(plan, args.scene, out_dir, primary,
+                                          fallback=args.backend is None)
         print(f"regenerated {path} via {used.name}")
     else:
         generate_images(plan, out_dir, backend=args.backend)

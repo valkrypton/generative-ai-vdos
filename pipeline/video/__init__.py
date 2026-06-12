@@ -97,6 +97,8 @@ def _animate_batch(provider, plan: ShotPlan, images_dir: Path, out_dir: Path,
         print(f"  animate: scene {i + 1} timed out — stays a still")
 
 
+# Currently unreachable (Wan implements submit/poll) — kept intentionally as the
+# documented path for future providers without async task support (see base.py).
 def _animate_sequential(provider, plan: ShotPlan, images_dir: Path, out_dir: Path,
                         todo: List[int]) -> None:
     for i in todo:
