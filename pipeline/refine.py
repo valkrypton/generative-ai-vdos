@@ -31,6 +31,8 @@ def print_plan(plan: ShotPlan, work_dir: Path) -> None:
     print(f"STYLE : {plan.style_prefix}")
     print(f"MUSIC : {plan.music_mood}")
     print(f"LENGTH: ~{len(plan.scenes) * 5}s ({len(plan.scenes)} scenes)")
+    for c in plan.characters:
+        print(f"CHAR  : {{{c.name}}} = {c.description}")
     for i, s in enumerate(plan.scenes):
         print("-" * 72)
         print(f"scene {i}")

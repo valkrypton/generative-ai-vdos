@@ -47,12 +47,13 @@ def generate_scene_image(
     """Generate one scene's image, falling back through remaining providers on failure."""
     scene = plan.scenes[index]
     path = out_dir / f"scene_{index:02d}.png"
-    prompt = f"{plan.style_prefix}, {scene.image_prompt}"
+    scene_prompt = plan.expand(scene.image_prompt)
+    prompt = f"{plan.style_prefix}, {scene_prompt}"
     chain = [primary] + [p for p in PROVIDERS if p is not primary and p.available()]
     last_error = None
     for provider in chain:
         try:
-            provider.generate(prompt, path, query=scene.image_prompt)
+            provider.generate(prompt, path, query=scene_prompt)
             return path, provider
         except Exception as e:
             last_error = e

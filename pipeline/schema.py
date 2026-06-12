@@ -4,6 +4,15 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
+class Character(BaseModel):
+    name: str = Field(description="Short lowercase placeholder id, e.g. 'thief' or 'mom'.")
+    description: str = Field(
+        description="Full visual description: age, hair, face, every clothing item "
+        "with its color, e.g. 'a mid-30s man with short black hair and stubble, wearing "
+        "a black zip-up hoodie, dark blue jeans and white sneakers'."
+    )
+
+
 class Scene(BaseModel):
     narration: str = Field(description="Voiceover text for this scene, 1-3 sentences.")
     image_prompt: str = Field(
@@ -37,4 +46,16 @@ class ShotPlan(BaseModel):
         description="Global image style prepended to every scene's image prompt, "
         "e.g. 'cinematic photo, muted colors, shallow depth of field'."
     )
+    characters: List[Character] = Field(
+        default_factory=list,
+        description="Recurring characters. In image_prompt and motion, reference them "
+        "ONLY by placeholder, e.g. {thief} — the pipeline substitutes the full "
+        "description into every scene, guaranteeing a consistent look.",
+    )
     scenes: List[Scene] = Field(description="8-15 scenes. Scene durations come from the voiceover audio.")
+
+    def expand(self, text: str) -> str:
+        """Replace {name} character placeholders with their full descriptions."""
+        for c in self.characters:
+            text = text.replace("{" + c.name + "}", c.description)
+        return text

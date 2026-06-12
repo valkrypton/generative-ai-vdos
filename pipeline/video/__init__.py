@@ -39,11 +39,11 @@ def get_provider(name: Optional[str] = None) -> VideoProvider:
         "(free trial credit at modelstudio.console.alibabacloud.com, Singapore region)")
 
 
-def _motion_prompt(scene: Scene) -> str:
+def _motion_prompt(plan: ShotPlan, scene: Scene) -> str:
     if scene.motion:
-        return f"{scene.motion} Stay on this single shot, no scene changes."
-    return (f"{scene.image_prompt} Gentle cinematic camera motion and subtle natural "
-            f"movement. Stay on this single shot, no scene changes.")
+        return f"{plan.expand(scene.motion)} Stay on this single shot, no scene changes."
+    return (f"{plan.expand(scene.image_prompt)} Gentle cinematic camera motion and subtle "
+            f"natural movement. Stay on this single shot, no scene changes.")
 
 
 def animate_scenes(plan: ShotPlan, images_dir: Path, out_dir: Path,
@@ -72,7 +72,7 @@ def _animate_batch(provider, plan: ShotPlan, images_dir: Path, out_dir: Path,
     pending = {}
     for i in todo:
         try:
-            task_id = provider.submit(_motion_prompt(plan.scenes[i]),
+            task_id = provider.submit(_motion_prompt(plan, plan.scenes[i]),
                                       images_dir / f"scene_{i:02d}.png")
             pending[i] = task_id
             print(f"  animate: scene {i + 1} submitted")
@@ -101,7 +101,7 @@ def _animate_sequential(provider, plan: ShotPlan, images_dir: Path, out_dir: Pat
                         todo: List[int]) -> None:
     for i in todo:
         try:
-            provider.generate(_motion_prompt(plan.scenes[i]),
+            provider.generate(_motion_prompt(plan, plan.scenes[i]),
                               images_dir / f"scene_{i:02d}.png",
                               out_dir / f"scene_{i:02d}.mp4")
             print(f"  animate: scene {i + 1}/{len(plan.scenes)}")

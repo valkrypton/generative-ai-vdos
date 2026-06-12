@@ -19,12 +19,17 @@ Rules:
   rendered text in images — text belongs in on_screen_text.
 - Pick one consistent style_prefix and write every image_prompt to work with it.
 
-Character consistency (critical — scenes are generated independently):
-- If a person or animal character appears in more than one scene, invent ONE exact
-  description (age, hair, clothing with specific colors, species/breed) and repeat it
-  VERBATIM in every image_prompt where they appear. Example: write "the 10-year-old girl
-  in a pink frock with white flowers" in scene 1 AND scene 4 — never "the girl" or a
-  reworded version. Drifting descriptions produce a different-looking character per scene.
+Character consistency (critical — scenes are generated independently, the image model
+NEVER sees other scenes, so any character detail not restated is randomly reinvented):
+- Define every recurring person/animal ONCE in the characters list: a short lowercase
+  name (e.g. "thief") and a full visual description covering age, hair, face, and each
+  clothing item with its color, e.g. "a mid-30s man with short black hair and stubble,
+  wearing a black zip-up hoodie, dark blue jeans and white sneakers".
+- In image_prompt and motion, refer to a character ONLY by its placeholder in curly
+  braces, e.g. "{thief} crouching by the locker, picking the lock". The pipeline
+  substitutes the full description automatically in every scene.
+- Never describe a recurring character inline and never write "he"/"she"/"the thief" —
+  always the {placeholder}.
 
 Motion (each still may be animated into a video clip):
 - Set the motion field to describe what should move in the scene. If a character is

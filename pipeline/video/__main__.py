@@ -34,7 +34,7 @@ def main() -> None:
     if args.scene is not None:
         provider = get_provider(args.backend)
         out = out_dir / f"scene_{args.scene:02d}.mp4"
-        provider.generate(_motion_prompt(plan.scenes[args.scene]),
+        provider.generate(_motion_prompt(plan, plan.scenes[args.scene]),
                           images_dir / f"scene_{args.scene:02d}.png", out)
         print(f"animated {out} via {provider.name}")
     else:
