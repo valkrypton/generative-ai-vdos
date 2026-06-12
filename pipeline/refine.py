@@ -37,9 +37,12 @@ def print_plan(plan: ShotPlan, work_dir: Path) -> None:
         print("-" * 72)
         print(f"scene {i}")
         print(f"  narration : {s.narration}")
-        print(f"  image     : {s.image_prompt}")
+        chars = plan.characters_in(s.image_prompt)
+        if chars:
+            print(f"  chars     : {', '.join(chars)} (full descriptions substituted automatically)")
+        print(f"  image     : {plan.expand(s.image_prompt)}")
         if s.motion:
-            print(f"  motion    : {s.motion}")
+            print(f"  motion    : {plan.expand(s.motion)}")
         if s.voice:
             print(f"  voice     : {s.voice}")
         if s.on_screen_text:

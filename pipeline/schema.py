@@ -1,4 +1,5 @@
 """The shot plan — the contract every downstream stage consumes."""
+import re
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
@@ -54,8 +55,22 @@ class ShotPlan(BaseModel):
     )
     scenes: List[Scene] = Field(description="8-15 scenes. Scene durations come from the voiceover audio.")
 
-    def expand(self, text: str) -> str:
-        """Replace {name} character placeholders with their full descriptions."""
+    def characters_in(self, text: str) -> List[str]:
+        """Names of characters referenced in text (via {placeholder} or bare name)."""
+        found = []
         for c in self.characters:
-            text = text.replace("{" + c.name + "}", c.description)
+            pattern = r"\{" + re.escape(c.name) + r"\}|\b" + re.escape(c.name) + r"\b"
+            if re.search(pattern, text, flags=re.IGNORECASE):
+                found.append(c.name)
+        return found
+
+    def expand(self, text: str) -> str:
+        """Replace character references with their full descriptions.
+
+        Matches both {name} placeholders and bare names (word-boundary,
+        case-insensitive) — LLMs frequently forget the braces.
+        """
+        for c in self.characters:
+            pattern = r"\{" + re.escape(c.name) + r"\}|\b" + re.escape(c.name) + r"\b"
+            text = re.sub(pattern, c.description, text, flags=re.IGNORECASE)
         return text

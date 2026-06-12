@@ -14,7 +14,9 @@ Rules:
   a surprising fact, or a bold claim. Never open with "Welcome" or "In this video".
 - Keep narration conversational and punchy. Short sentences. No filler.
 - Each scene's narration should take roughly 4-8 seconds to speak aloud.
-- The final scene is a clear call to action (subscribe / comment prompt), one sentence.
+- For educational / listicle topic videos only: end with a one-sentence call to action
+  (subscribe / comment prompt). For stories, dialogues, and personal videos, do NOT add
+  any call-to-action or subscribe scene — end on the story's natural final beat.
 - image_prompt must describe a concrete visual, never abstract concepts. Do not ask for
   rendered text in images — text belongs in on_screen_text.
 - Pick one consistent style_prefix and write every image_prompt to work with it.

@@ -65,6 +65,11 @@ def generate_images(plan: ShotPlan, out_dir: Path, backend: Optional[str] = None
     out_dir.mkdir(parents=True, exist_ok=True)
     primary = get_provider(backend)
     print(f"  images: backend = {primary.name}")
+    if plan.characters:
+        print("  images: character check (same description substituted in every scene):")
+        for i, scene in enumerate(plan.scenes):
+            chars = plan.characters_in(scene.image_prompt)
+            print(f"    scene {i}: {', '.join(chars) if chars else '-'}")
     paths = []
     for i in range(len(plan.scenes)):
         path, used = generate_scene_image(plan, i, out_dir, primary)
