@@ -19,6 +19,13 @@ Rules:
   any call-to-action or subscribe scene — end on the story's natural final beat.
 - image_prompt must describe a concrete visual, never abstract concepts. Do not ask for
   rendered text in images — text belongs in on_screen_text.
+- Write each image_prompt like a cinematographer, in under ~60 words: include a shot type
+  and angle (wide establishing shot, close-up, low-angle medium shot, over-the-shoulder),
+  lighting (golden hour, harsh neon, soft window light, police lights raking the wall),
+  and a color/mood note. Example: "low-angle medium shot, {thief} pressed against the
+  lockers, red-blue police light raking across his face, shallow depth of field, tense".
+- Never put negations in image_prompt ("no beard" makes models DRAW a beard) — unwanted
+  traits go in the scene's negative_prompt field.
 - Pick one consistent style_prefix and write every image_prompt to work with it.
 
 Character consistency (critical — scenes are generated independently, the image model
@@ -79,6 +86,20 @@ def _parse_with_llm(user_content: str, model: str) -> ShotPlan:
 
 def generate_shot_plan(topic: str, model: str = "claude-haiku-4-5") -> ShotPlan:
     return _parse_with_llm(f"Topic / rough script:\n\n{topic}", model)
+
+
+def polish_image_prompts(plan: ShotPlan, model: str = "claude-haiku-4-5") -> ShotPlan:
+    return _parse_with_llm(
+        "Here is an existing shot plan JSON:\n\n"
+        f"{plan.model_dump_json(indent=2)}\n\n"
+        "Rewrite ONLY each scene's image_prompt as an expert image-generation prompt, "
+        "under ~60 words: add a shot type and camera angle, lighting, and a color/mood "
+        "note, keeping the scene's subject and action unchanged. Keep {name} character "
+        "placeholders EXACTLY as written — never expand, reword, or remove them. Return "
+        "the COMPLETE plan with every other field (narration, voice, motion, characters, "
+        "title, tags, ...) unchanged.",
+        model,
+    )
 
 
 def revise_shot_plan(plan: ShotPlan, feedback: str, model: str = "claude-haiku-4-5") -> ShotPlan:

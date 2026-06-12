@@ -74,6 +74,7 @@ Iterate until it's right (each command defaults to the most recent video):
 
 ```bash
 python -m pipeline.refine --change "make Awais 48 and clean-shaven, put him in the stadium"
+python -m pipeline.refine --polish             # rewrite image prompts with shot/lighting detail
 python -m pipeline.refine                      # view the current plan again
 ```
 
