@@ -29,7 +29,8 @@ class QwenImageProvider(ImageProvider):
     def available(self) -> bool:
         return bool(os.environ.get("DASHSCOPE_API_KEY"))
 
-    def generate(self, prompt: str, path: Path, query: Optional[str] = None) -> None:
+    def generate(self, prompt: str, path: Path, query: Optional[str] = None,
+                 negative: Optional[str] = None) -> None:
         base = (os.environ.get("DASHSCOPE_API_URL")
                 or os.environ.get("DASHSCOPE_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
         body = {
@@ -47,8 +48,9 @@ class QwenImageProvider(ImageProvider):
                 # the TTS timings, so keep generated images text-free.
                 "prompt_extend": False,
                 "watermark": False,
-                "negative_prompt": "text, words, captions, typography, letters, "
-                                   "watermark, logo, subtitles",
+                "negative_prompt": ("text, words, captions, typography, letters, "
+                                    "watermark, logo, subtitles"
+                                    + (f", {negative}" if negative else "")),
             },
         }
         req = urllib.request.Request(

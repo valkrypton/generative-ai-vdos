@@ -53,7 +53,7 @@ def generate_scene_image(
     last_error = None
     for provider in chain:
         try:
-            provider.generate(prompt, path, query=scene_prompt)
+            provider.generate(prompt, path, query=scene_prompt, negative=scene.negative_prompt)
             return path, provider
         except Exception as e:
             last_error = e

@@ -34,6 +34,11 @@ class Scene(BaseModel):
         "'the girl is talking, lips moving as she speaks, gesturing with her hands'. "
         "Default: gentle cinematic motion derived from image_prompt.",
     )
+    negative_prompt: Optional[str] = Field(
+        default=None,
+        description="Optional: things the image must NOT contain, e.g. 'beard, mustache'. "
+        "Use for traits the model keeps adding; never phrase negatives in image_prompt.",
+    )
 
 
 class ShotPlan(BaseModel):

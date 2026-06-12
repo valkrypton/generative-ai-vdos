@@ -20,7 +20,8 @@ class PexelsProvider(ImageProvider):
     def available(self) -> bool:
         return bool(os.environ.get("PEXELS_API_KEY"))
 
-    def generate(self, prompt: str, path: Path, query: Optional[str] = None) -> None:
+    def generate(self, prompt: str, path: Path, query: Optional[str] = None,
+                 negative: Optional[str] = None) -> None:
         q = query or prompt
         url = "https://api.pexels.com/v1/search?" + urllib.parse.urlencode(
             {"query": q, "orientation": "landscape", "size": "large", "per_page": 1}

@@ -20,7 +20,8 @@ class FluxProvider(ImageProvider):
             return False
         return True
 
-    def generate(self, prompt: str, path: Path, query: Optional[str] = None) -> None:
+    def generate(self, prompt: str, path: Path, query: Optional[str] = None,
+                 negative: Optional[str] = None) -> None:
         import replicate
 
         output = replicate.run(

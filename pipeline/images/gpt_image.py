@@ -18,7 +18,8 @@ class GptImageProvider(ImageProvider):
     def available(self) -> bool:
         return bool(os.environ.get("OPENAI_API_KEY"))
 
-    def generate(self, prompt: str, path: Path, query: Optional[str] = None) -> None:
+    def generate(self, prompt: str, path: Path, query: Optional[str] = None,
+                 negative: Optional[str] = None) -> None:
         from openai import OpenAI
 
         client = OpenAI()

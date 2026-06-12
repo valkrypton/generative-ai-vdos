@@ -17,7 +17,8 @@ class PlaceholderProvider(ImageProvider):
     def available(self) -> bool:
         return True
 
-    def generate(self, prompt: str, path: Path, query: Optional[str] = None) -> None:
+    def generate(self, prompt: str, path: Path, query: Optional[str] = None,
+                 negative: Optional[str] = None) -> None:
         h = hashlib.sha256(prompt.encode()).digest()
         top = (h[0] % 120 + 20, h[1] % 120 + 20, h[2] % 120 + 40)
         bottom = (h[3] % 120 + 20, h[4] % 120 + 40, h[5] % 120 + 20)

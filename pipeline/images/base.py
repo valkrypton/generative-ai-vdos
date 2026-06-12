@@ -17,7 +17,10 @@ class ImageProvider(ABC):
         """True when this backend is usable (credentials/deps present)."""
 
     @abstractmethod
-    def generate(self, prompt: str, path: Path, query: Optional[str] = None) -> None:
+    def generate(self, prompt: str, path: Path, query: Optional[str] = None,
+                 negative: Optional[str] = None) -> None:
         """Write a 1920x1080 png to path, or raise to let the fallback chain try
         the next provider. query is the bare scene description without the
-        style_prefix (search-based backends match better on it)."""
+        style_prefix (search-based backends match better on it). negative lists
+        things the image must NOT contain — backends without negative-prompt
+        support ignore it."""
