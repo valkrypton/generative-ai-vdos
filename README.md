@@ -188,7 +188,8 @@ task queue, how edge-tts works without a key, and FFmpeg's four passes — see
       "motion": "{thief} is talking, lips moving as he speaks",         // optional, drives animation
       "voice": "en-US-BrianNeural",          // optional, per-scene speaker (dialogue)
       "on_screen_text": "Caught!",           // optional, styled title overlay
-      "negative_prompt": "beard, mustache"   // optional, things the image must NOT contain
+      "negative_prompt": "beard, mustache",  // optional, things the image must NOT contain
+      "reference_image": "refs/office.jpg"   // optional, build the scene on a real photo (gpt-image-1)
     }
   ]
 }

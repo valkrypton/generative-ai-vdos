@@ -27,3 +27,15 @@ class GptImageProvider(ImageProvider):
         )
         img = Image.open(io.BytesIO(base64.b64decode(result.data[0].b64_json))).convert("RGB")
         fit_cover(img).save(path)
+
+    def edit(self, prompt: str, reference: Path, path: Path) -> None:
+        """Build the scene on top of a reference photo (real building, person, ...)."""
+        from openai import OpenAI
+
+        client = OpenAI()
+        with open(reference, "rb") as f:
+            result = client.images.edit(
+                model="gpt-image-1", image=f, prompt=prompt, size="1536x1024", n=1,
+            )
+        img = Image.open(io.BytesIO(base64.b64decode(result.data[0].b64_json))).convert("RGB")
+        fit_cover(img).save(path)

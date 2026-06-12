@@ -39,6 +39,12 @@ class Scene(BaseModel):
         description="Optional: things the image must NOT contain, e.g. 'beard, mustache'. "
         "Use for traits the model keeps adding; never phrase negatives in image_prompt.",
     )
+    reference_image: Optional[str] = Field(
+        default=None,
+        description="Optional path to a local photo to build this scene on (a real "
+        "building, person, product). The image model edits/composes from it instead of "
+        "generating from scratch. Needs a backend with edit support (gpt-image-1).",
+    )
 
 
 class ShotPlan(BaseModel):

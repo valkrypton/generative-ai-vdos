@@ -51,6 +51,19 @@ def generate_scene_image(
     path = out_dir / f"scene_{index:02d}.png"
     scene_prompt = plan.expand(scene.image_prompt)
     prompt = f"{plan.style_prefix}, {scene_prompt}"
+
+    if scene.reference_image:
+        ref = Path(scene.reference_image)
+        if not ref.is_file():
+            raise RuntimeError(f"scene {index + 1}: reference_image not found: {ref}")
+        editor = primary if hasattr(primary, "edit") else next(
+            (p for p in PROVIDERS if hasattr(p, "edit") and p.available()), None)
+        if editor is None:
+            raise RuntimeError("reference_image needs a backend with edit support "
+                               "(gpt-image-1 — set OPENAI_API_KEY)")
+        editor.edit(prompt, ref, path)
+        return path, editor
+
     chain = [primary]
     if fallback:
         chain += [p for p in PROVIDERS if p is not primary and p.available()]
