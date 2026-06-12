@@ -40,9 +40,29 @@ def generate_voiceover(plan: ShotPlan, out_dir: Path, voice: str = DEFAULT_VOICE
         for i, scene in enumerate(plan.scenes):
             mp3 = out_dir / f"scene_{i:02d}.mp3"
             words = out_dir / f"scene_{i:02d}.words.json"
-            await _synth_scene(scene.narration, voice, mp3, words)
+            scene_voice = scene.voice or voice
+            await _synth_scene(scene.narration, scene_voice, mp3, words)
             mp3_paths.append(mp3)
-            print(f"  voice: scene {i + 1}/{len(plan.scenes)}")
+            print(f"  voice: scene {i + 1}/{len(plan.scenes)} ({scene_voice})")
 
     asyncio.run(run_all())
     return mp3_paths
+
+
+def main() -> None:
+    """CLI: python -m pipeline.voiceover output/<slug> [--voice NAME]"""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Generate voiceover for an existing work dir")
+    parser.add_argument("work_dir", help="output/<slug> dir containing shot_plan.json")
+    parser.add_argument("--voice", default=DEFAULT_VOICE,
+                        help="Narrator voice; per-scene 'voice' in shot_plan.json overrides")
+    args = parser.parse_args()
+
+    work_dir = Path(args.work_dir)
+    plan = ShotPlan.model_validate_json((work_dir / "shot_plan.json").read_text())
+    generate_voiceover(plan, work_dir / "audio", voice=args.voice)
+
+
+if __name__ == "__main__":
+    main()

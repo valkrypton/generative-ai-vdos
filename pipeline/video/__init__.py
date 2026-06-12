@@ -40,6 +40,8 @@ def get_provider(name: Optional[str] = None) -> VideoProvider:
 
 
 def _motion_prompt(scene: Scene) -> str:
+    if scene.motion:
+        return f"{scene.motion} Stay on this single shot, no scene changes."
     return (f"{scene.image_prompt} Gentle cinematic camera motion and subtle natural "
             f"movement. Stay on this single shot, no scene changes.")
 

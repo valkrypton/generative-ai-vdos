@@ -13,6 +13,17 @@ class Scene(BaseModel):
     on_screen_text: Optional[str] = Field(
         default=None, description="Optional short overlay text (max ~6 words)."
     )
+    voice: Optional[str] = Field(
+        default=None,
+        description="Optional edge-tts voice for this scene only (e.g. for dialogue: "
+        "'ur-PK-UzmaNeural'). Default: the run-wide narrator voice.",
+    )
+    motion: Optional[str] = Field(
+        default=None,
+        description="Optional motion description for the animate stage, e.g. "
+        "'the girl is talking, lips moving as she speaks, gesturing with her hands'. "
+        "Default: gentle cinematic motion derived from image_prompt.",
+    )
 
 
 class ShotPlan(BaseModel):

@@ -154,3 +154,24 @@ def pick_music(music_root: Path, mood: str) -> Optional[Path]:
     if not pool:
         pool = list(music_root.rglob("*.mp3"))
     return random.choice(pool) if pool else None
+
+
+def main() -> None:
+    """CLI: python -m pipeline.assemble output/<slug> [--music-dir music]"""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Assemble final.mp4 for an existing work dir")
+    parser.add_argument("work_dir", help="output/<slug> dir with shot_plan.json, images/, audio/")
+    parser.add_argument("--music-dir", default="music")
+    args = parser.parse_args()
+
+    work_dir = Path(args.work_dir)
+    plan = ShotPlan.model_validate_json((work_dir / "shot_plan.json").read_text())
+    music = pick_music(Path(args.music_dir), plan.music_mood)
+    print(f"  music: {music if music else 'none'}")
+    final = assemble(plan, work_dir, music_path=music)
+    print(f"Done: {final}")
+
+
+if __name__ == "__main__":
+    main()
