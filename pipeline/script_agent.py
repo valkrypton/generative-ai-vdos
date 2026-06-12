@@ -18,6 +18,27 @@ Rules:
 - image_prompt must describe a concrete visual, never abstract concepts. Do not ask for
   rendered text in images — text belongs in on_screen_text.
 - Pick one consistent style_prefix and write every image_prompt to work with it.
+
+Character consistency (critical — scenes are generated independently):
+- If a person or animal character appears in more than one scene, invent ONE exact
+  description (age, hair, clothing with specific colors, species/breed) and repeat it
+  VERBATIM in every image_prompt where they appear. Example: write "the 10-year-old girl
+  in a pink frock with white flowers" in scene 1 AND scene 4 — never "the girl" or a
+  reworded version. Drifting descriptions produce a different-looking character per scene.
+
+Motion (each still may be animated into a video clip):
+- Set the motion field to describe what should move in the scene. If a character is
+  speaking the narration, say so explicitly: "the girl is talking, lips moving as she
+  speaks, gesturing". For scenery use camera/ambient motion: "slow drift, leaves swaying".
+
+Dialogue and voices:
+- For narrator-style videos leave voice null everywhere (one narrator voice is used).
+- If scenes are spoken BY different characters (dialogue), set voice per scene to a
+  fitting edge-tts voice and write the narration as that character's spoken line.
+  Examples: en-US-AndrewNeural / en-US-BrianNeural (male), en-US-JennyNeural /
+  en-GB-SoniaNeural (female), ur-PK-UzmaNeural / ur-IN-GulNeural (Urdu female),
+  ur-PK-AsadNeural (Urdu male), hi-IN-SwaraNeural (Hindi female).
+- Match the voice language to the narration language.
 """
 
 

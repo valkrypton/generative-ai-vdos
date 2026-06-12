@@ -53,6 +53,8 @@ def main() -> None:
     """CLI: python -m pipeline.voiceover output/<slug> [--voice NAME]"""
     import argparse
 
+    from .env import load_env
+    load_env()
     parser = argparse.ArgumentParser(description="Generate voiceover for an existing work dir")
     parser.add_argument("work_dir", help="output/<slug> dir containing shot_plan.json")
     parser.add_argument("--voice", default=DEFAULT_VOICE,

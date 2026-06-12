@@ -10,6 +10,22 @@ from .schema import ShotPlan
 
 FPS = 30
 
+# First present font is used for on_screen_text overlays.
+_FONT = next((f for f in [
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "/System/Library/Fonts/Helvetica.ttc",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+] if Path(f).exists()), None)
+
+
+def _overlay_filter(text: Optional[str]) -> str:
+    """drawtext filter chunk for the scene's on_screen_text (top center), or ''."""
+    if not text or _FONT is None:
+        return ""
+    esc = text.replace("\\", "\\\\").replace("'", "’").replace(":", "\\:").replace("%", "\\%")
+    return (f",drawtext=fontfile='{_FONT}':text='{esc}':fontsize=58:fontcolor=white:"
+            f"borderw=3:bordercolor=black@0.8:x=(w-text_w)/2:y=70")
+
 
 def _run(cmd: List[str], cwd: Optional[Path] = None) -> None:
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
@@ -81,12 +97,13 @@ def assemble(plan: ShotPlan, work_dir: Path, music_path: Optional[Path] = None) 
         mp3 = audio_dir / f"scene_{i:02d}.mp3"
         clip = clips_dir / f"scene_{i:02d}.mp4"
         dur = _duration(mp3) + 0.3  # small breath between scenes
+        overlay = _overlay_filter(plan.scenes[i].on_screen_text)
         if vid.exists():
             _run([
                 "ffmpeg", "-y", "-stream_loop", "-1", "-i", str(vid), "-i", str(mp3),
                 "-filter_complex",
                 f"[0:v]scale=1920:1080:force_original_aspect_ratio=increase,"
-                f"crop=1920:1080,fps={FPS}[v];[1:a]apad[a]",
+                f"crop=1920:1080,fps={FPS}{overlay}[v];[1:a]apad[a]",
                 "-map", "[v]", "-map", "[a]",
                 "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-ar", "44100",
@@ -102,7 +119,7 @@ def assemble(plan: ShotPlan, work_dir: Path, music_path: Optional[Path] = None) 
                 "-i", str(mp3),
                 "-filter_complex",
                 f"[0:v]scale=2304:1296,zoompan=z='{zexpr}':d={frames}:"
-                f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps={FPS}[v];"
+                f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps={FPS}{overlay}[v];"
                 f"[1:a]apad[a]",
                 "-map", "[v]", "-map", "[a]",
                 "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",

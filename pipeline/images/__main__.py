@@ -8,11 +8,13 @@ Usage:
 import argparse
 from pathlib import Path
 
+from ..env import load_env
 from ..schema import ShotPlan
 from . import PROVIDERS, generate_images, generate_scene_image, get_provider
 
 
 def main() -> None:
+    load_env()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("work_dir", help="output/<slug> dir containing shot_plan.json")
     parser.add_argument("--scene", type=int, default=None, help="Regenerate only this scene index (0-based)")

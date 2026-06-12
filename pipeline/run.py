@@ -13,7 +13,10 @@ import re
 import sys
 from pathlib import Path
 
+from .env import load_env
 from .schema import ShotPlan
+
+load_env()
 
 STAGES = ["plan", "images", "animate", "voice", "assemble"]
 

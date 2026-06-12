@@ -43,9 +43,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-cp .env.example .env
-# edit .env and add your keys, then load them into the shell:
-set -a && source .env && set +a
+cp .env.example .env   # then edit it and add your keys
+# (the pipeline auto-loads .env — no manual sourcing needed)
 ```
 
 ### API keys
@@ -175,6 +174,5 @@ then append an instance to `PROVIDERS` in `pipeline/images/__init__.py`. List or
 
 - YouTube upload (Data API + OAuth)
 - Thumbnail generation from the best scene
-- Per-character TTS voices for dialogue scripts
 - 9:16 portrait mode for Shorts/Reels
-- Scene transitions and `on_screen_text` overlays
+- Scene transitions
