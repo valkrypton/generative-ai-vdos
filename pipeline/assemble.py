@@ -180,14 +180,23 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Assemble final.mp4 for an existing work dir")
     parser.add_argument("work_dir", nargs="?", default=None,
                         help="output/<name> dir (default: the most recent one)")
-    parser.add_argument("--music-dir", default="music")
+    parser.add_argument("--music-dir", default="music",
+                        help="Folder to pick a mood-matching track from")
+    parser.add_argument("--music", default=None,
+                        help="Exact music file to use (overrides --music-dir and mood)")
     args = parser.parse_args()
 
     from .run import latest_work_dir
     work_dir = Path(args.work_dir) if args.work_dir else latest_work_dir()
     print(f"video folder: {work_dir}")
     plan = ShotPlan.model_validate_json((work_dir / "shot_plan.json").read_text())
-    music = pick_music(Path(args.music_dir), plan.music_mood)
+    if args.music:
+        music = Path(args.music)
+        if not music.is_file():
+            import sys
+            sys.exit(f"music file not found: {music}")
+    else:
+        music = pick_music(Path(args.music_dir), plan.music_mood)
     print(f"  music: {music if music else 'none'}")
     final = assemble(plan, work_dir, music_path=music)
     print(f"Done: {final}")
