@@ -25,6 +25,17 @@ def slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:60]
 
 
+def latest_work_dir(out_root: Path = Path("output")) -> Path:
+    """The most recently created/revised video folder — used when stage CLIs
+    are run without a folder argument."""
+    dirs = ([d for d in out_root.iterdir() if (d / "shot_plan.json").is_file()]
+            if out_root.exists() else [])
+    if not dirs:
+        sys.exit('no video folders found — create one first:\n'
+                 '  python -m pipeline.refine "your idea"')
+    return max(dirs, key=lambda d: (d / "shot_plan.json").stat().st_mtime)
+
+
 def load_state(work_dir: Path) -> dict:
     f = work_dir / "state.json"
     return json.loads(f.read_text()) if f.exists() else {"done": []}

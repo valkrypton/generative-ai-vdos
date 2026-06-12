@@ -178,11 +178,14 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(description="Assemble final.mp4 for an existing work dir")
-    parser.add_argument("work_dir", help="output/<slug> dir with shot_plan.json, images/, audio/")
+    parser.add_argument("work_dir", nargs="?", default=None,
+                        help="output/<name> dir (default: the most recent one)")
     parser.add_argument("--music-dir", default="music")
     args = parser.parse_args()
 
-    work_dir = Path(args.work_dir)
+    from .run import latest_work_dir
+    work_dir = Path(args.work_dir) if args.work_dir else latest_work_dir()
+    print(f"video folder: {work_dir}")
     plan = ShotPlan.model_validate_json((work_dir / "shot_plan.json").read_text())
     music = pick_music(Path(args.music_dir), plan.music_mood)
     print(f"  music: {music if music else 'none'}")

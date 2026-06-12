@@ -57,7 +57,9 @@ def main() -> None:
     default_model = "claude-haiku-4-5" if os.environ.get("ANTHROPIC_API_KEY") else "gpt-4o-mini"
     parser = argparse.ArgumentParser(
         description="Rough idea -> reviewable shot plan; iterate with --change")
-    parser.add_argument("input", help="Rough idea text, or an existing output/<name> dir")
+    parser.add_argument("input", nargs="?", default=None,
+                        help="Rough idea text, or an existing output/<name> dir "
+                             "(omit to view/revise the most recent one)")
     parser.add_argument("--change", default=None,
                         help="Feedback to revise an existing plan (use with an output dir)")
     parser.add_argument("--name", default=None,
@@ -65,7 +67,11 @@ def main() -> None:
     parser.add_argument("--model", default=default_model)
     args = parser.parse_args()
 
-    in_path = Path(args.input)
+    if args.input is None:
+        from .run import latest_work_dir
+        in_path = latest_work_dir()
+    else:
+        in_path = Path(args.input)
     if (in_path / "shot_plan.json").is_file():
         # Existing plan: view, or revise with --change.
         work_dir = in_path

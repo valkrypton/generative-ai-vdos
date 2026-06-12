@@ -91,6 +91,14 @@ python -m pipeline.run "..." --approve                   # finish the rest
 | `--model claude-haiku-4-5` | LLM for the shot plan (auto-picked from available keys) |
 | `--voice en-GB-SoniaNeural` | Any [edge-tts voice](https://github.com/rany2/edge-tts#custom-voice) |
 
+All stage commands can omit the folder — they default to the **most recent** video:
+
+```bash
+python -m pipeline.refine "a thief gets caught and learns a lesson"   # creates output/<title-slug>/
+python -m pipeline.refine --change "make it funnier"                  # revises the latest plan
+python -m pipeline.images && python -m pipeline.video && python -m pipeline.voiceover && python -m pipeline.assemble
+```
+
 ### Per-scene fixes
 
 ```bash

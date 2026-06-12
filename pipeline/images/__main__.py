@@ -16,13 +16,16 @@ from . import PROVIDERS, generate_images, generate_scene_image, get_provider
 def main() -> None:
     load_env()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("work_dir", help="output/<slug> dir containing shot_plan.json")
+    parser.add_argument("work_dir", nargs="?", default=None,
+                        help="output/<name> dir (default: the most recent one)")
     parser.add_argument("--scene", type=int, default=None, help="Regenerate only this scene index (0-based)")
     parser.add_argument("--backend", default=None,
                         choices=[p.name for p in PROVIDERS], help="Force a specific backend")
     args = parser.parse_args()
 
-    work_dir = Path(args.work_dir)
+    from ..run import latest_work_dir
+    work_dir = Path(args.work_dir) if args.work_dir else latest_work_dir()
+    print(f"video folder: {work_dir}")
     plan = ShotPlan.model_validate_json((work_dir / "shot_plan.json").read_text())
     out_dir = work_dir / "images"
     out_dir.mkdir(parents=True, exist_ok=True)

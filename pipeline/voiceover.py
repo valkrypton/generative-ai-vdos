@@ -56,12 +56,15 @@ def main() -> None:
     from .env import load_env
     load_env()
     parser = argparse.ArgumentParser(description="Generate voiceover for an existing work dir")
-    parser.add_argument("work_dir", help="output/<slug> dir containing shot_plan.json")
+    parser.add_argument("work_dir", nargs="?", default=None,
+                        help="output/<name> dir (default: the most recent one)")
     parser.add_argument("--voice", default=DEFAULT_VOICE,
                         help="Narrator voice; per-scene 'voice' in shot_plan.json overrides")
     args = parser.parse_args()
 
-    work_dir = Path(args.work_dir)
+    from .run import latest_work_dir
+    work_dir = Path(args.work_dir) if args.work_dir else latest_work_dir()
+    print(f"video folder: {work_dir}")
     plan = ShotPlan.model_validate_json((work_dir / "shot_plan.json").read_text())
     generate_voiceover(plan, work_dir / "audio", voice=args.voice)
 

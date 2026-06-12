@@ -16,13 +16,16 @@ from . import PROVIDERS, _motion_prompt, animate_scenes, get_provider
 def main() -> None:
     load_env()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("work_dir", help="output/<slug> dir containing shot_plan.json + images/")
+    parser.add_argument("work_dir", nargs="?", default=None,
+                        help="output/<name> dir (default: the most recent one)")
     parser.add_argument("--scene", type=int, default=None, help="Animate only this scene index (0-based)")
     parser.add_argument("--backend", default=None,
                         choices=[p.name for p in PROVIDERS], help="Force a specific backend")
     args = parser.parse_args()
 
-    work_dir = Path(args.work_dir)
+    from ..run import latest_work_dir
+    work_dir = Path(args.work_dir) if args.work_dir else latest_work_dir()
+    print(f"video folder: {work_dir}")
     plan = ShotPlan.model_validate_json((work_dir / "shot_plan.json").read_text())
     images_dir = work_dir / "images"
     out_dir = work_dir / "video"
