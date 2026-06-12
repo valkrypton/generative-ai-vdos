@@ -1,17 +1,17 @@
 """Refine a rough idea into a shot plan, review it in the terminal, iterate with feedback.
 
 Usage:
-    # 1. New plan from rough text (writes output/<name>/shot_plan.json, prints summary):
-    python -m pipeline.refine "two friends talk about stars at night, urdu voices" --name stars
+    # 1. New plan from rough text -> output/<timestamp>/shot_plan.json + summary:
+    python -m pipeline.refine "two friends talk about stars at night, urdu voices"
 
     # 2. View the current plan again:
-    python -m pipeline.refine output/stars
+    python -m pipeline.refine output/20260612-234500
 
     # 3. Revise it with feedback (AI rewrites the plan, keeps the rest intact):
-    python -m pipeline.refine output/stars --change "make the mom younger and add a park scene"
+    python -m pipeline.refine output/20260612-234500 --change "make the mom younger"
 
     # 4. When happy, generate:
-    python -m pipeline.images output/stars
+    python -m pipeline.images output/20260612-234500
 """
 import argparse
 import json
@@ -60,7 +60,7 @@ def main() -> None:
     parser.add_argument("--change", default=None,
                         help="Feedback to revise an existing plan (use with an output dir)")
     parser.add_argument("--name", default=None,
-                        help="Output folder name for a new plan (default: slug of the text)")
+                        help="Output folder name for a new plan (default: timestamp)")
     parser.add_argument("--model", default=default_model)
     args = parser.parse_args()
 
@@ -79,9 +79,10 @@ def main() -> None:
         if args.change:
             sys.exit("--change needs an existing output dir, e.g. "
                      "python -m pipeline.refine output/my-video --change \"...\"")
-        from .run import slugify
+        import time
+
         from .script_agent import generate_shot_plan
-        work_dir = Path("output") / (args.name or slugify(args.input))
+        work_dir = Path("output") / (args.name or time.strftime("%Y%m%d-%H%M%S"))
         work_dir.mkdir(parents=True, exist_ok=True)
         print(f"generating plan ({args.model})...")
         plan = generate_shot_plan(args.input, model=args.model)
