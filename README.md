@@ -56,7 +56,7 @@ set -a && source .env && set +a
 | `ANTHROPIC_API_KEY` | Shot plan (Claude) — alternative to OpenAI | [console.anthropic.com](https://console.anthropic.com/) | ~$0.001/plan |
 | `REPLICATE_API_TOKEN` | Images via Flux Schnell (also `pip install replicate`) | [replicate.com](https://replicate.com/) | ~$0.003/image |
 | `PEXELS_API_KEY` | Free stock photos instead of AI images | [pexels.com/api](https://www.pexels.com/api/) | free |
-| `DASHSCOPE_API_KEY` | Optional: animate stills into video clips (Wan i2v) | [Alibaba Model Studio](https://modelstudio.console.alibabacloud.com) — **pick the Singapore region**; new accounts get ~1,650s of free video credit (90 days) | free trial, then ~$0.10–0.25/clip |
+| `DASHSCOPE_API_KEY` | Images (`qwen-image`, free quota) + animate stills into video clips (Wan i2v) | [Alibaba Model Studio](https://modelstudio.console.alibabacloud.com) — **pick the Singapore region**; new accounts get free image quota and ~1,650s of video credit (90 days) | free quota, then ~$0.02/image, ~$0.10–0.25/clip |
 
 Only one LLM key and zero image keys are strictly required — with no image key the pipeline renders gradient placeholders so you can test the whole flow for free.
 
@@ -87,7 +87,7 @@ python -m pipeline.run "..." --approve                   # finish the rest
 | Flag | What it does |
 |---|---|
 | `--name octopus` | Friendly output folder name instead of the topic slug |
-| `--image-backend pexels` | Force a backend: `flux-schnell`, `gpt-image-1`, `pexels`, `placeholder` |
+| `--image-backend pexels` | Force a backend: `flux-schnell`, `qwen-image`, `gpt-image-1`, `pexels`, `placeholder` |
 | `--animate` | Animate scene stills into motion clips (needs `DASHSCOPE_API_KEY`) |
 | `--model claude-haiku-4-5` | LLM for the shot plan (auto-picked from available keys) |
 | `--voice en-GB-SoniaNeural` | Any [edge-tts voice](https://github.com/rany2/edge-tts#custom-voice) |
@@ -120,6 +120,7 @@ pipeline/
   images/          Stage 2: image providers
     base.py          ImageProvider interface
     flux.py          Flux Schnell via Replicate
+    qwen_image.py    Qwen via DashScope (free quota, shares the Wan key)
     gpt_image.py     OpenAI gpt-image-1
     pexels.py        free stock photos
     placeholder.py   PIL gradients, $0, always available

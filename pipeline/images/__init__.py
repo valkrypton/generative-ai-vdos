@@ -17,9 +17,11 @@ from .flux import FluxProvider
 from .gpt_image import GptImageProvider
 from .pexels import PexelsProvider
 from .placeholder import PlaceholderProvider
+from .qwen_image import QwenImageProvider
 
 PROVIDERS: List[ImageProvider] = [
     FluxProvider(),
+    QwenImageProvider(),  # free quota — preferred over paid gpt-image-1
     GptImageProvider(),
     PexelsProvider(),
     PlaceholderProvider(),
