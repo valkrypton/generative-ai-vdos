@@ -42,7 +42,7 @@ Dialogue and voices:
 """
 
 
-def generate_shot_plan(topic: str, model: str = "claude-haiku-4-5") -> ShotPlan:
+def _parse_with_llm(user_content: str, model: str) -> ShotPlan:
     if model.startswith("gpt"):
         from openai import OpenAI
 
@@ -51,7 +51,7 @@ def generate_shot_plan(topic: str, model: str = "claude-haiku-4-5") -> ShotPlan:
             model=model,
             messages=[
                 {"role": "system", "content": SYSTEM},
-                {"role": "user", "content": f"Topic / rough script:\n\n{topic}"},
+                {"role": "user", "content": user_content},
             ],
             response_format=ShotPlan,
         )
@@ -64,7 +64,24 @@ def generate_shot_plan(topic: str, model: str = "claude-haiku-4-5") -> ShotPlan:
         model=model,
         max_tokens=8192,
         system=SYSTEM,
-        messages=[{"role": "user", "content": f"Topic / rough script:\n\n{topic}"}],
+        messages=[{"role": "user", "content": user_content}],
         output_format=ShotPlan,
     )
     return response.parsed_output
+
+
+def generate_shot_plan(topic: str, model: str = "claude-haiku-4-5") -> ShotPlan:
+    return _parse_with_llm(f"Topic / rough script:\n\n{topic}", model)
+
+
+def revise_shot_plan(plan: ShotPlan, feedback: str, model: str = "claude-haiku-4-5") -> ShotPlan:
+    return _parse_with_llm(
+        "Here is an existing shot plan JSON:\n\n"
+        f"{plan.model_dump_json(indent=2)}\n\n"
+        "Apply the following feedback and return the COMPLETE updated shot plan. "
+        "Change only what the feedback requires and keep everything else identical. "
+        "If the feedback changes a character's look, update that character's "
+        "description verbatim in every scene where they appear:\n\n"
+        f"{feedback}",
+        model,
+    )
