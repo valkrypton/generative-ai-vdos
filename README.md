@@ -196,6 +196,8 @@ task queue, how edge-tts works without a key, and FFmpeg's four passes — see
 
 **Character consistency:** scenes are generated independently, so the pipeline substitutes each character's full description wherever `{name}` (or the bare name) appears in `image_prompt`/`motion`. Change a character's look in one place; every scene follows.
 
+**Intentional outfit/scene changes:** define one character entry per look with the same face/hair — e.g. `boy_home` ("…wearing blue striped pajamas") and `boy_school` ("…wearing a navy school uniform") — and reference the right one per scene. Drift is a choice, never an accident.
+
 **Negatives:** image models ignore negated text — "no beard" *draws a beard*. Put unwanted traits in `negative_prompt` instead (used by backends that support it).
 
 ## Architecture
