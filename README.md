@@ -14,7 +14,7 @@ Turn a rough idea (or a full script) into a finished, narrated 1080p video — a
    review gates: iterate on the plan, then inspect images, before any video credit is spent
 ```
 
-**Cost per video:** ~$0.001 (script) + $0 images (Qwen free quota) + $0 voice — or **$0 end-to-end in placeholder mode**. Optional animation: free trial credit, then ~$0.10–0.25 per 5s clip.
+**Cost per video:** ~$0.001 (script) + $0 images (Qwen free quota) + $0 voice — or **$0 end-to-end in placeholder mode**. Optional animation: free trial credit, then ~$0.07–0.10 per 5s clip at our settings (wan2.2-i2v-flash, 720P; pricier Wan tiers go up to ~$0.25 — exact rates in the Model Studio console).
 
 ## Features
 
@@ -54,7 +54,7 @@ cp .env.example .env   # then edit it and add your keys
 |---|---|---|---|
 | `OPENAI_API_KEY` | Shot plan (gpt-4o-mini) + images (gpt-image-1) | [platform.openai.com](https://platform.openai.com/api-keys) | ~$0.001/plan, ~$0.01–0.02/image |
 | `ANTHROPIC_API_KEY` | Shot plan (Claude) — alternative to OpenAI | [console.anthropic.com](https://console.anthropic.com/) | ~$0.001/plan |
-| `DASHSCOPE_API_KEY` | Images (`qwen-image`, free quota) + animation (Wan i2v) | [Alibaba Model Studio](https://modelstudio.console.alibabacloud.com) — **pick the Singapore region**; new accounts get free image quota and ~1,650s of video credit (90 days) | free quota, then ~$0.02/image, ~$0.10–0.25/clip |
+| `DASHSCOPE_API_KEY` | Images (`qwen-image`, free quota) + animation (Wan i2v) | [Alibaba Model Studio](https://modelstudio.console.alibabacloud.com) — **pick the Singapore region**; new accounts get free image quota and ~1,650s of video credit (90 days) | free quota, then ~$0.02/image, ~$0.07–0.10/clip |
 | `REPLICATE_API_TOKEN` | Images via Flux Schnell (also `pip install replicate`) | [replicate.com](https://replicate.com/) | ~$0.003/image |
 | `PEXELS_API_KEY` | Free stock photos instead of AI images | [pexels.com/api](https://www.pexels.com/api/) | free |
 
