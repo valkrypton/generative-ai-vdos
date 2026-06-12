@@ -32,10 +32,12 @@ Rules:
 
 Character consistency (critical — scenes are generated independently, the image model
 NEVER sees other scenes, so any character detail not restated is randomly reinvented):
-- Define every recurring person/animal ONCE in the characters list: a short lowercase
-  name (e.g. "thief") and a full visual description covering age, hair, face, and each
-  clothing item with its color, e.g. "a mid-30s man with short black hair and stubble,
-  wearing a black zip-up hoodie, dark blue jeans and white sneakers".
+- Define every recurring person, animal, AND distinctive place/object (a specific
+  building, car, room, ship) ONCE in the characters list: a short lowercase name
+  (e.g. "thief", "office") and a full visual description — for people: age, hair, face,
+  each clothing item with its color; for places/objects: size, materials, colors,
+  signage, surroundings, e.g. "a modern four-storey office building with a dark glass
+  facade, a large white 'TechCo' sign across the top, trees and a lawn in front".
 - A character description is IDENTITY ONLY — a noun phrase with no trailing period and
   no pose, action, or emotion ("sitting", "shivering", "smiling" belong in the scene's
   image_prompt, never in the description, which is reused across every scene).
