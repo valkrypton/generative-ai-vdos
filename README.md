@@ -150,6 +150,10 @@ ffmpeg: (clips + speech) per scene → glue → burn subtitles → mix music →
 Because every stage only reads files, any stage can be re-run, swapped (Qwen ↔
 gpt-image-1), or fixed for a single scene without touching the rest.
 
+For the deeper mechanics — structured LLM output, the diffusion REST calls, Wan's async
+task queue, how edge-tts works without a key, and FFmpeg's four passes — see
+[docs/INTERNALS.md](docs/INTERNALS.md).
+
 ## The shot plan format
 
 `shot_plan.json` is the contract every stage consumes. The important fields:
