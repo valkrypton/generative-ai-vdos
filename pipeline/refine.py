@@ -68,7 +68,10 @@ def main() -> None:
     parser.add_argument("--change", default=None,
                         help="Feedback to revise an existing plan (use with an output dir)")
     parser.add_argument("--polish", action="store_true",
-                        help="Rewrite each image_prompt with expert composition/lighting detail")
+                        help="Rewrite an existing plan's image prompts with expert "
+                             "composition/lighting detail (new plans are polished automatically)")
+    parser.add_argument("--no-polish", action="store_true",
+                        help="Skip the automatic polish pass when generating a new plan")
     parser.add_argument("--name", default=None,
                         help="Output folder name for a new plan (default: timestamp)")
     parser.add_argument("--model", default=default_model)
@@ -113,7 +116,8 @@ def main() -> None:
         # mark the plan stage done so pipeline.run can also resume this dir
         (work_dir / "state.json").write_text(json.dumps({"done": ["plan"]}, indent=2))
 
-    if args.polish:
+    # New plans get a polish pass automatically; existing plans only with --polish.
+    if args.polish or (not is_existing_plan and not args.no_polish):
         from .script_agent import polish_image_prompts
         print(f"polishing image prompts ({args.model})...")
         plan = polish_image_prompts(plan, model=args.model)

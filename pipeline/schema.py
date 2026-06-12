@@ -76,6 +76,9 @@ class ShotPlan(BaseModel):
         case-insensitive) — LLMs frequently forget the braces.
         """
         for c in self.characters:
+            desc = c.description.strip().rstrip(".")
             pattern = r"\{" + re.escape(c.name) + r"\}|\b" + re.escape(c.name) + r"\b"
-            text = re.sub(pattern, c.description, text, flags=re.IGNORECASE)
+            text = re.sub(pattern, desc, text, flags=re.IGNORECASE)
+        # collapse double articles produced by "the {name}" -> "the a young boy ..."
+        text = re.sub(r"\b(?:the|a|an) (a|an|the)\b", r"\1", text, flags=re.IGNORECASE)
         return text

@@ -34,6 +34,9 @@ NEVER sees other scenes, so any character detail not restated is randomly reinve
   name (e.g. "thief") and a full visual description covering age, hair, face, and each
   clothing item with its color, e.g. "a mid-30s man with short black hair and stubble,
   wearing a black zip-up hoodie, dark blue jeans and white sneakers".
+- A character description is IDENTITY ONLY — a noun phrase with no trailing period and
+  no pose, action, or emotion ("sitting", "shivering", "smiling" belong in the scene's
+  image_prompt, never in the description, which is reused across every scene).
 - In image_prompt and motion, refer to a character ONLY by its placeholder in curly
   braces, e.g. "{thief} crouching by the locker, picking the lock". The pipeline
   substitutes the full description automatically in every scene.
