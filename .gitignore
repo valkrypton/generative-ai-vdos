@@ -1,0 +1,16 @@
+# Secrets — never commit real keys; use .env.example as the template
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Generated artifacts (videos, images, audio, state)
+output/
+
+# Local music library (drop royalty-free mp3s here)
+music/
+
+# macOS
+.DS_Store
