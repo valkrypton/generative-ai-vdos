@@ -86,6 +86,20 @@ def assemble(plan: ShotPlan, work_dir: Path, music_path: Optional[Path] = None) 
     clips_dir = work_dir / "clips"
     clips_dir.mkdir(exist_ok=True)
 
+    missing_audio = [i for i in range(len(plan.scenes))
+                     if not (audio_dir / f"scene_{i:02d}.mp3").is_file()]
+    if missing_audio:
+        raise SystemExit(
+            f"no voiceover for scene(s) {missing_audio} in {audio_dir} — run:\n"
+            f"  python -m pipeline.voiceover {work_dir}")
+    missing_images = [i for i in range(len(plan.scenes))
+                      if not (images_dir / f"scene_{i:02d}.png").is_file()
+                      and not (video_dir / f"scene_{i:02d}.mp4").is_file()]
+    if missing_images:
+        raise SystemExit(
+            f"no image or clip for scene(s) {missing_images} — run:\n"
+            f"  python -m pipeline.images {work_dir}")
+
     # Per-scene clip + that scene's voiceover. An animated clip from the
     # optional animate stage (video/scene_NN.mp4) is preferred — looped and
     # trimmed to the narration; otherwise Ken Burns over the still image.
