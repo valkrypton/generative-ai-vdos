@@ -62,6 +62,10 @@ Minimum: one LLM key (OpenAI or Anthropic). With no image key the pipeline rende
 
 ## Workflow
 
+**Try it without writing anything:** a ready-made plan ships in [`examples/`](examples/README.md) —
+`cp -r examples/the-sharing-berry output/ && python -m pipeline.images output/the-sharing-berry`
+(see `examples/README.md` for the full run and which API key each stage needs).
+
 ### Step 1 — refine: rough idea → reviewable plan
 
 ```bash

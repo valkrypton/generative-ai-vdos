@@ -1,0 +1,43 @@
+{
+  "title": "The Sharing Berry",
+  "description": "A little sparrow finds a giant berry and learns that sharing makes everything sweeter. A ready-to-run example showing characters, dialogue voices, motion, overlays and negative prompts.",
+  "tags": ["example", "kids story", "sharing", "animation"],
+  "music_mood": "calm",
+  "style_prefix": "bright and colorful storybook illustration, whimsical style, soft warm light",
+  "characters": [
+    {
+      "name": "pip",
+      "description": "a small brown sparrow with a white belly and an orange beak"
+    },
+    {
+      "name": "benny",
+      "description": "a tan rabbit with long pink-tipped ears and a fluffy white tail"
+    }
+  ],
+  "scenes": [
+    {
+      "narration": "In a sunny forest, Pip the sparrow found the biggest berry he had ever seen!",
+      "image_prompt": "wide establishing shot, {pip} hopping excitedly around a giant shiny red berry in a sunlit forest clearing, golden morning light, cheerful mood",
+      "motion": "{pip} hops around the berry, wings fluttering with excitement",
+      "on_screen_text": "The Giant Berry!",
+      "voice": null,
+      "negative_prompt": null
+    },
+    {
+      "narration": "Pip, can we share it? I'm so hungry!",
+      "image_prompt": "medium shot, {benny} looking up hopefully at {pip} perched on the giant red berry, big pleading eyes, soft forest light filtering through leaves",
+      "motion": "{benny} is talking, mouth moving as he speaks, ears drooping hopefully",
+      "on_screen_text": null,
+      "voice": "en-GB-SoniaNeural",
+      "negative_prompt": null
+    },
+    {
+      "narration": "Of course! Berries taste sweeter when we share them with friends.",
+      "image_prompt": "low-angle medium shot, {pip} and {benny} happily eating the giant red berry together, juice sparkling, warm golden-hour glow, joyful atmosphere",
+      "motion": "{pip} is talking cheerfully, then both characters eat the berry together, laughing",
+      "on_screen_text": "Sharing is sweeter!",
+      "voice": "en-US-AnaNeural",
+      "negative_prompt": "sad expressions, dark colors"
+    }
+  ]
+}
