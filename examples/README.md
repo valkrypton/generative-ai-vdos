@@ -15,7 +15,9 @@ python -m pipeline.refine --change "make the rabbit grey instead of tan"
 python -m pipeline.images          # check output/<name>/images before continuing
 python -m pipeline.video           # optional: animate (~5s credit/scene)
 python -m pipeline.voiceover
-python -m pipeline.assemble
+python -m pipeline.assemble                          # music auto-picked from music/<mood>/
+# or pass a specific track:
+python -m pipeline.assemble --music ~/Downloads/my-track.mp3
 open output/<name>/final.mp4
 ```
 
@@ -30,6 +32,8 @@ python -m pipeline.images   output/the-sharing-berry     # stills, one per scene
 python -m pipeline.video    output/the-sharing-berry     # optional: animate (~5s credit/scene)
 python -m pipeline.voiceover output/the-sharing-berry    # narrator + dialogue voices
 python -m pipeline.assemble output/the-sharing-berry     # -> final.mp4
+# with a specific music track instead of the mood-based pick:
+python -m pipeline.assemble output/the-sharing-berry --music path/to/track.mp3
 open output/the-sharing-berry/final.mp4
 ```
 
