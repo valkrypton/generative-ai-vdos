@@ -39,6 +39,18 @@ Turn a rough idea (or a full script) into a finished, narrated 1080p video — a
 ```bash
 git clone git@github.com:awais786/generative-ai-vdos.git
 cd generative-ai-vdos
+make install           # installs ffmpeg + python venv + dependencies, creates .env
+# then put your keys in .env and: source .venv/bin/activate
+
+make example           # optional: render the bundled example video, $0, no keys needed
+```
+
+<details>
+<summary>Manual setup (what `make install` does)</summary>
+
+```bash
+brew install ffmpeg-full && brew link --overwrite ffmpeg-full   # macOS
+# sudo apt install ffmpeg                                       # Linux
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -47,6 +59,8 @@ pip install -r requirements.txt
 cp .env.example .env   # then edit it and add your keys
 # (the pipeline auto-loads .env — no manual sourcing needed)
 ```
+
+</details>
 
 ### API keys
 
