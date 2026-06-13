@@ -77,9 +77,15 @@ def main() -> None:
 
     # ---- Stage 1: shot plan ----
     if "plan" not in state["done"]:
-        from .script_agent import generate_shot_plan
+        from .script_agent import consistency_review, generate_shot_plan, polish_image_prompts
         print(f"stage: plan ({args.model})")
         plan = generate_shot_plan(args.topic, model=args.model)
+        plan_file.write_text(plan.model_dump_json(indent=2))
+        print(f"  polishing image prompts ({args.model})...")
+        plan = polish_image_prompts(plan, model=args.model)
+        plan_file.write_text(plan.model_dump_json(indent=2))
+        print(f"  consistency review ({args.model})...")
+        plan = consistency_review(plan, model=args.model)
         plan_file.write_text(plan.model_dump_json(indent=2))
         state["done"].append("plan")
         save_state(work_dir, state)

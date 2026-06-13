@@ -20,11 +20,11 @@ from .placeholder import PlaceholderProvider
 from .qwen_image import QwenImageProvider
 
 PROVIDERS: List[ImageProvider] = [
-    FluxProvider(),
-    QwenImageProvider(),  # free quota — preferred over paid gpt-image-1
-    GptImageProvider(),
+    QwenImageProvider(),  # free — always first
+    FluxProvider(),       # free tier only — costs money after quota
     PexelsProvider(),
     PlaceholderProvider(),
+    GptImageProvider(),   # paid — never auto-selected, use --backend gpt-image-1 explicitly
 ]
 
 
