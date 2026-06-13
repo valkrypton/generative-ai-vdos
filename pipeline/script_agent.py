@@ -122,20 +122,25 @@ LITELLM_DEFAULT_MODEL = "groq/llama-3.3-70b-versatile"
 
 def default_model() -> str:
     """Resolve the shot-plan model from the explicit LLM_PROVIDER flag (a friendly
-    name, not a model id). No auto-detect: an unset/unknown provider is an error."""
+    name, not a model id). No auto-detect: an unset/unknown provider, or a chosen
+    provider whose key is missing, is an error."""
     provider = os.environ.get("LLM_PROVIDER", "").strip().lower()
     if not provider:
         raise RuntimeError(
             "no LLM provider set — put LLM_PROVIDER in .env "
             "(openai | litellm/libra | anthropic) or pass --model")
     if provider == "openai":
-        return "gpt-4o-mini"
-    if provider in ("anthropic", "claude"):
-        return "claude-haiku-4-5"
-    if provider in ("litellm", "libra", "company"):
-        return os.environ.get("LITELLM_MODEL", LITELLM_DEFAULT_MODEL)
-    raise RuntimeError(
-        f"unknown LLM_PROVIDER '{provider}' — use openai, litellm/libra, or anthropic")
+        model, need = "gpt-4o-mini", "OPENAI_API_KEY"
+    elif provider in ("anthropic", "claude"):
+        model, need = "claude-haiku-4-5", "ANTHROPIC_API_KEY"
+    elif provider in ("litellm", "libra", "company"):
+        model, need = os.environ.get("LITELLM_MODEL", LITELLM_DEFAULT_MODEL), "LITELLM_API_KEY"
+    else:
+        raise RuntimeError(
+            f"unknown LLM_PROVIDER '{provider}' — use openai, litellm/libra, or anthropic")
+    if not os.environ.get(need):
+        raise RuntimeError(f"LLM provider '{provider}' is not configured — set {need} in .env")
+    return model
 
 
 def _parse_with_llm(user_content: str, model: str) -> ShotPlan:
