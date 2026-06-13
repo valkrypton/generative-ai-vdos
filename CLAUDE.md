@@ -11,7 +11,7 @@ source .venv/bin/activate                  # python 3.9 venv at repo root
 python -m pipeline.refine "idea"           # plan + auto-polish (stage 1, ~$0.001)
 python -m pipeline.refine --change "..."   # revise latest plan
 python -m pipeline.images                  # stage 2 (free via qwen)
-python -m pipeline.video                   # stage 2.5 — SPENDS Wan credit (~5s/scene)
+python -m pipeline.video                   # stage 2.5 — DISABLED by default (costs money) — uncomment pipeline/video/__main__.py to re-enable
 python -m pipeline.voiceover               # stage 3 (free)
 python -m pipeline.assemble [--music f]    # stage 4 (free, local ffmpeg)
 ```
@@ -29,6 +29,8 @@ There is no test suite. Verify changes by running stages against a copy of
 - **Never run `pipeline.video` (Wan animation) without the user asking** — it spends
   the limited free credit (~1,650s per account, ~5s/scene). Same for adding paid
   backends to a run.
+- **gpt-image-1 is never auto-selected** — requires explicit `--backend gpt-image-1`.
+  Qwen (free) is always the default first-choice image backend.
 - Images via `qwen-image` and plans via `gpt-4o-mini` are effectively free; still,
   show the user the plan/images at review gates before generating downstream assets.
 - The user reviews artifacts between stages by preference: plan → images → the rest.
@@ -54,9 +56,24 @@ There is no test suite. Verify changes by running stages against a copy of
   descriptions verbatim across scenes — that's why `characters` + `{name}`
   placeholders + `ShotPlan.expand()` exist. Never put a character's look inline in a
   scene prompt; never put pose/emotion in a character description.
+- **Character.negative is auto-merged** — bald character, white-haired character,
+  clean-shaven character all need their `negative` field set; the pipeline merges it
+  into every scene automatically. Never rely on `scene.negative_prompt` alone for
+  persistent per-character traits.
+- **global_negative goes on ShotPlan, not per-scene** — video-wide rules (no women
+  in a male video, no extra limbs, no watermarks) belong in `global_negative`. It is
+  merged into every scene in the video.
 - **Image models draw negated words** ("no beard" → beard). Unwanted traits go in
-  `scene.negative_prompt`. If qwen still refuses (strong priors), regenerate that one
-  scene with `--backend gpt-image-1` — it follows instructions much better.
+  `scene.negative_prompt`, `Character.negative`, or `global_negative` as appropriate.
+  If qwen still refuses (strong priors), regenerate that one scene with
+  `--backend gpt-image-1` — it follows instructions much better.
+- **Animation is disabled** (`pipeline/video/__main__.py` is commented out). Never
+  uncomment without the user explicitly asking — it spends DashScope credit.
+- **Auto-polish and consistency_review run automatically** on every new plan in both
+  `refine.py` and `run.py`. Do not add manual `--polish` calls in scripts.
+- **Provider order: Qwen first (free), then Flux (free tier), then Pexels, then
+  placeholder, gpt-image-1 LAST.** gpt-image-1 is only reachable via explicit
+  `--backend gpt-image-1`.
 - Wan model/resolution/duration are **hardcoded constants** in `pipeline/video/wan.py`
   (wan2.2-i2v-flash, 720P, 5s) by user decision — don't make them env vars.
 - macOS needs `ffmpeg-full` (plain Homebrew ffmpeg lacks libass → no `subtitles`

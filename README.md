@@ -20,8 +20,12 @@ Turn a rough idea (or a full script) into a finished, narrated 1080p video — a
 
 - **Refine-and-iterate workflow** — rough text in, reviewable shot plan out; revise it with plain-English feedback before anything is generated.
 - **Consistent characters** — define each recurring character once; the pipeline substitutes the full description into every scene's prompts (code-enforced, not LLM-hoped).
+- **Auto-polish and consistency review** — every new plan goes through two automatic LLM passes: image prompt polish (adds shot type, lighting, mood) and consistency review (catches missing placeholders, wrong negatives, animate cap violations). No extra flags needed.
+- **Character negative prompts** — set a `negative` field on any character to suppress traits the model keeps adding (bald character: `"hair, wig"`; white hair: `"dark hair, black hair"`). Merged automatically into every scene that character appears in.
+- **Global negative** — one `global_negative` field on the shot plan blocks unwanted traits from the entire video (e.g. `"woman, female"` for a male-only video).
 - **Multi-provider with fallback** — 5 image backends, auto-picked by available keys; a failed scene falls through to the next backend instead of killing the run.
-- **Real motion (optional)** — stills animated into video clips (Wan i2v); failed scenes gracefully stay as Ken Burns stills.
+- **Real motion (optional, disabled by default)** — stills animated into video clips (Wan i2v); failed scenes gracefully stay as Ken Burns stills. Animation is currently disabled — requires uncommenting code in `pipeline/video/__main__.py`.
+- **6-direction Ken Burns** — zoom-in, zoom-out, pan left→right, pan right→left, zoom top-left, zoom bottom-right; varies per scene automatically with per-clip fade transitions.
 - **Dialogue voices** — per-scene TTS voices (e.g. two characters talking, any language edge-tts supports, including Urdu).
 - **Free captions + text overlays** — word-synced subtitles from TTS timestamps; `on_screen_text` rendered as styled titles.
 - **Resumable** — every stage records completion; re-runs skip finished work.
@@ -66,10 +70,10 @@ cp .env.example .env   # then edit it and add your keys
 
 | Key | Used for | Where to get it | Cost |
 |---|---|---|---|
-| `OPENAI_API_KEY` | Shot plan (gpt-4o-mini) + images (gpt-image-1) | [platform.openai.com](https://platform.openai.com/api-keys) | ~$0.001/plan, ~$0.01–0.02/image |
+| `OPENAI_API_KEY` | Shot plan (gpt-4o-mini) + images (gpt-image-1, never auto-selected — requires explicit `--backend gpt-image-1`) | [platform.openai.com](https://platform.openai.com/api-keys) | ~$0.001/plan, ~$0.01–0.02/image |
 | `ANTHROPIC_API_KEY` | Shot plan (Claude) — alternative to OpenAI | [console.anthropic.com](https://console.anthropic.com/) | ~$0.001/plan |
-| `DASHSCOPE_API_KEY` | Images (`qwen-image`, free quota) + animation (Wan i2v) | [Alibaba Model Studio](https://modelstudio.console.alibabacloud.com) — **pick the Singapore region**; new accounts get free image quota and ~1,650s of video credit (90 days) | free quota, then ~$0.02/image, ~$0.07–0.10/clip |
-| `REPLICATE_API_TOKEN` | Images via Flux Schnell (also `pip install replicate`) | [replicate.com](https://replicate.com/) | ~$0.003/image |
+| `DASHSCOPE_API_KEY` | Images (`qwen-image`, free quota, always tried first) + animation (Wan i2v) | [Alibaba Model Studio](https://modelstudio.console.alibabacloud.com) — **pick the Singapore region**; new accounts get free image quota and ~1,650s of video credit (90 days) | free quota, then ~$0.02/image, ~$0.07–0.10/clip |
+| `REPLICATE_API_TOKEN` | Images via Flux Schnell (free tier, tried second; also `pip install replicate`) | [replicate.com](https://replicate.com/) | ~$0.003/image |
 | `PEXELS_API_KEY` | Free stock photos instead of AI images | [pexels.com/api](https://www.pexels.com/api/) | free |
 
 Minimum: one LLM key (OpenAI or Anthropic). With no image key the pipeline renders gradient placeholders so the whole flow can be tested for $0.
@@ -88,11 +92,13 @@ python -m pipeline.refine "Messi and Ronaldo chat about the World Cup with their
 
 Prints the full plan — title, character cards, every scene's narration / expanded image prompt / motion / voice — and writes it to `output/<title-slug>/shot_plan.json`. Costs ~$0.001, generates nothing else yet.
 
+Polish and consistency review run automatically — no `--polish` needed for new plans.
+
 Iterate until it's right (each command defaults to the most recent video):
 
 ```bash
 python -m pipeline.refine --change "make Awais 48 and clean-shaven, put him in the stadium"
-python -m pipeline.refine --polish             # rewrite image prompts with shot/lighting detail
+python -m pipeline.refine --polish             # rewrite image prompts with shot/lighting detail (manual, for existing plans)
 python -m pipeline.refine                      # view the current plan again
 ```
 
@@ -113,7 +119,10 @@ python -m pipeline.images --scene 2 --backend gpt-image-1
 ### Steps 3–5 — animate, voice, assemble
 
 ```bash
-python -m pipeline.video         # ~5s credit per scene; skips scenes that already have clips
+# Animation is currently DISABLED (to avoid accidental DashScope charges).
+# To re-enable: open pipeline/video/__main__.py and uncomment the code block.
+# python -m pipeline.video
+
 python -m pipeline.voiceover     # per-scene voices from the plan, word timestamps for captions
 python -m pipeline.assemble      # music picked by mood from music/, or:
 python -m pipeline.assemble --music path/to/track.mp3
@@ -138,8 +147,8 @@ them. Nothing is hidden — every intermediate artifact can be opened and inspec
 | Stage | Tool | Input → Output | What happens |
 |---|---|---|---|
 | 1. Shot plan | gpt-4o-mini (or Claude) | rough text → `shot_plan.json` | An LLM breaks the idea into scenes: narration line, image description, motion, voice per scene. This JSON is the single source of truth for everything downstream. ~$0.001. |
-| 2. Images | Qwen / gpt-image-1 / Flux / Pexels | prompts → `images/scene_NN.png` | For each scene, `style_prefix + image_prompt` (with `{character}` placeholders expanded) goes to an image AI, which paints one still frame. Free on Qwen quota. |
-| 2.5 Animate | Wan (DashScope) | still + motion text → `video/scene_NN.mp4` | Wan keeps the people/background from the still and imagines the next ~5 seconds of movement, frame by frame. The costly step — review images first. A failed scene just stays a still. |
+| 2. Images | Qwen / Flux / Pexels / gpt-image-1 | prompts → `images/scene_NN.png` | For each scene, `style_prefix + image_prompt` (with `{character}` placeholders expanded) goes to an image AI, which paints one still frame. Three-layer negative merging: global_negative + character negatives + scene.negative_prompt. Free on Qwen quota. |
+| 2.5 Animate | Wan (DashScope) — **DISABLED by default** | still + motion text → `video/scene_NN.mp4` | Wan keeps the people/background from the still and imagines the next ~5 seconds of movement, frame by frame. The costly step — review images first. A failed scene just stays a still. To enable: uncomment `pipeline/video/__main__.py`. |
 | 3. Voiceover | edge-tts (free) | narration → `audio/scene_NN.mp3` + `.words.json` | Microsoft TTS speaks each line in the scene's voice, and streams back the millisecond each word is spoken — that's how subtitles sync perfectly without any speech recognition. |
 | 4. Music | none (just a file) | `music/<mood>/*.mp3` | A track matching the plan's mood is picked (or `--music <file>`); it's mixed in during assembly. |
 | 5. Assemble | FFmpeg | everything above → `final.mp4` | The robot video editor: see below. |
@@ -147,9 +156,10 @@ them. Nothing is hidden — every intermediate artifact can be opened and inspec
 FFmpeg does four jobs in sequence:
 
 1. **Per-scene clip** — take the scene's Wan clip (looped if narration runs past 5s; or a
-   Ken Burns zoom over the still if there's no clip), attach the scene's mp3, and trim to
-   exactly the narration length + 0.3s. The audio drives all timing — pacing always
-   matches the speech.
+   Ken Burns effect over the still if there's no clip — 6 directions: zoom-in, zoom-out,
+   pan left→right, pan right→left, zoom top-left, zoom bottom-right, with per-clip fade
+   transitions), attach the scene's mp3, and trim to exactly the narration length + 0.3s.
+   The audio drives all timing — pacing always matches the speech.
 2. **Concatenate** — glue the scene clips back-to-back.
 3. **Captions** — convert the word timestamps into ~4-word subtitle chunks burned onto the
    pixels, plus `on_screen_text` titles drawn at the top.
@@ -177,9 +187,12 @@ task queue, how edge-tts works without a key, and FFmpeg's four passes — see
   "title": "...", "description": "...", "tags": [...],
   "music_mood": "calm | upbeat | chill | dramatic | mysterious | inspiring",
   "style_prefix": "vibrant 3D cartoon animation style, ...",   // prepended to every image prompt
+  "global_negative": "changing hairstyle, inconsistent clothing, different face, extra limbs, text, watermark, blurry",  // NEW: applied to every scene
   "characters": [
     { "name": "thief",
-      "description": "a mid-30s man with short black hair and stubble, wearing a black zip-up hoodie, dark blue jeans and white sneakers" }
+      "description": "a mid-30s man with short black hair and stubble, wearing a black zip-up hoodie, dark blue jeans and white sneakers",
+      "negative": "beard, mustache, different person"  // NEW: merged into every scene this character appears in
+    }
   ],
   "scenes": [
     {
@@ -188,8 +201,9 @@ task queue, how edge-tts works without a key, and FFmpeg's four passes — see
       "motion": "{thief} is talking, lips moving as he speaks",         // optional, drives animation
       "voice": "en-US-BrianNeural",          // optional, per-scene speaker (dialogue)
       "on_screen_text": "Caught!",           // optional, styled title overlay
-      "negative_prompt": "beard, mustache",  // optional, things the image must NOT contain
-      "reference_image": "refs/office.jpg"   // optional, build the scene on a real photo (gpt-image-1)
+      "negative_prompt": "beard, mustache",  // optional, scene-level things the image must NOT contain
+      "reference_image": "refs/office.jpg",  // optional, build the scene on a real photo (gpt-image-1)
+      "animate": false                       // NEW: true = real motion clip (max 2 per video, DISABLED by default); false = Ken Burns
     }
   ]
 }
@@ -199,7 +213,12 @@ task queue, how edge-tts works without a key, and FFmpeg's four passes — see
 
 **Intentional outfit/scene changes:** define one character entry per look with the same face/hair — e.g. `boy_home` ("…wearing blue striped pajamas") and `boy_school` ("…wearing a navy school uniform") — and reference the right one per scene. Drift is a choice, never an accident.
 
-**Negatives:** image models ignore negated text — "no beard" *draws a beard*. Put unwanted traits in `negative_prompt` instead (used by backends that support it).
+**Negatives — three layers merged automatically:**
+1. `global_negative` on `ShotPlan` — blocks traits from every scene in the video.
+2. `Character.negative` — blocks traits from every scene that character appears in.
+3. `Scene.negative_prompt` — scene-specific overrides.
+
+Image models ignore negated text — "no beard" *draws a beard*. Always use the negative fields instead.
 
 ## Architecture
 
@@ -212,7 +231,7 @@ pipeline/
   env.py           zero-dependency .env auto-loader
   images/          Stage 2: provider registry + per-scene fallback chain
     flux.py qwen_image.py gpt_image.py pexels.py placeholder.py
-  video/           Stage 2.5 (optional): image-to-video
+  video/           Stage 2.5 (optional, DISABLED by default): image-to-video
     wan.py           Wan via DashScope REST — batch submit, concurrent polling, fail-soft
   voiceover.py     Stage 3: edge-tts, per-scene voices, word timestamps
   assemble.py      Stage 4: FFmpeg — animated clips or Ken Burns, captions, overlays, music
@@ -255,7 +274,10 @@ Drop royalty-free mp3s into `music/<mood>/` — the assembler picks one matching
 | `ffmpeg failed: ... No such filter: 'subtitles'` | Install `ffmpeg-full` (macOS) — plain Homebrew ffmpeg lacks libass |
 | Images are colored gradients with text | No image key found — set `DASHSCOPE_API_KEY`, `OPENAI_API_KEY`, `PEXELS_API_KEY`, or `REPLICATE_API_TOKEN` |
 | Character looks different in each scene | Define them in `characters` and reference by `{name}` — never describe them inline in scene prompts |
-| Model keeps adding a trait ("no beard" gets a beard) | Use the scene's `negative_prompt`; if it persists, regenerate that scene with `--backend gpt-image-1` |
+| Model keeps adding a trait ("no beard" gets a beard) | Use the scene's `negative_prompt`; for persistent per-character traits use `Character.negative` — it's merged into every scene automatically |
+| Lady/woman appears in a male-only video | Add `"woman, female, lady"` to `global_negative` in `shot_plan.json` |
+| Character trait keeps appearing despite `negative_prompt` | Add it to the `Character.negative` field — it's merged into every scene automatically |
+| `pipeline.video` does nothing | Animation is disabled by default. Open `pipeline/video/__main__.py` and uncomment the code block to re-enable. |
 | `no voiceover for scene(s) ...` on assemble | Run `python -m pipeline.voiceover` first — assembly needs the audio for timing |
 | `moderation_blocked` on an image | The fallback chain handles it; soften the prompt and `--scene N` to retry |
 | Wan: `no video backend configured` | Set `DASHSCOPE_API_KEY`; free credit requires a Singapore-region Model Studio account |

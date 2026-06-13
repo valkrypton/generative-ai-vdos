@@ -13,7 +13,7 @@ python -m pipeline.refine --change "make the rabbit grey instead of tan"
 
 # 3. Generate, review images, then finish
 python -m pipeline.images          # check output/<name>/images before continuing
-python -m pipeline.video           # optional: animate (~5s credit/scene)
+# python -m pipeline.video        # DISABLED — uncomment pipeline/video/__main__.py to enable
 python -m pipeline.voiceover
 python -m pipeline.assemble                          # music auto-picked from music/<mood>/
 # or pass a specific track:
@@ -29,7 +29,7 @@ so steps 3–5 can be tested without any OpenAI/Anthropic key:
 ```bash
 cp -r examples/the-sharing-berry output/
 python -m pipeline.images   output/the-sharing-berry     # stills, one per scene
-python -m pipeline.video    output/the-sharing-berry     # optional: animate (~5s credit/scene)
+# python -m pipeline.video  output/the-sharing-berry     # DISABLED — uncomment pipeline/video/__main__.py to enable
 python -m pipeline.voiceover output/the-sharing-berry    # narrator + dialogue voices
 python -m pipeline.assemble output/the-sharing-berry     # -> final.mp4
 # with a specific music track instead of the mood-based pick:
@@ -45,8 +45,8 @@ stills and everything still works.
 | Stage | Command | Service | Env key (set in `.env`) | Without the key |
 |---|---|---|---|---|
 | Plan (skipped here — example plan is included) | `pipeline.refine` | OpenAI gpt-4o-mini or Anthropic Claude | `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` | required for *new* plans only |
-| Images | `pipeline.images` | Qwen (Alibaba DashScope), or gpt-image-1 / Flux / Pexels | `DASHSCOPE_API_KEY` (or `OPENAI_API_KEY` / `REPLICATE_API_TOKEN` / `PEXELS_API_KEY`) | free gradient placeholders |
-| Animate | `pipeline.video` | Wan i2v (Alibaba DashScope) | `DASHSCOPE_API_KEY` | stage skipped; stills + Ken Burns |
+| Images | `pipeline.images` | Qwen (Alibaba DashScope) first, then Flux (free tier), then Pexels, then placeholder; gpt-image-1 only via `--backend gpt-image-1` | `DASHSCOPE_API_KEY` (or `OPENAI_API_KEY` / `REPLICATE_API_TOKEN` / `PEXELS_API_KEY`) | free gradient placeholders |
+| Animate | `pipeline.video` | Wan i2v (Alibaba DashScope) — **DISABLED by default** | `DASHSCOPE_API_KEY` | stage skipped; stills + Ken Burns |
 | Voiceover | `pipeline.voiceover` | Microsoft edge-tts | none — free, no key | always works (needs internet) |
 | Assemble | `pipeline.assemble` | FFmpeg (local) | none — `brew install ffmpeg-full` | always works |
 
@@ -63,3 +63,6 @@ your own plans.
 - `motion` → talking characters instead of generic drift when animated
 - `on_screen_text` → styled title overlays
 - `negative_prompt` → keeping unwanted traits out of an image
+- `Character.negative` → auto-suppresses unwanted per-character traits across all scenes (e.g. bald character: `"hair, wig"`)
+- `global_negative` → video-wide negative prompt that blocks traits from every scene
+- `animate: true/false` → controls Ken Burns vs real motion (max 2 `animate: true` per video; animation is DISABLED by default)
