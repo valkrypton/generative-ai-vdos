@@ -21,6 +21,10 @@ class GptImageProvider(ImageProvider):
                  negative: Optional[str] = None) -> None:
         from openai import OpenAI
 
+        # gpt-image-1 has no negative_prompt param, but it follows instructions
+        # well — fold negatives into the prompt as an explicit "do not include".
+        if negative:
+            prompt = f"{prompt}. Do not include: {negative}."
         client = OpenAI()
         result = client.images.generate(
             model="gpt-image-1", prompt=prompt, size="1536x1024", quality="low", n=1,

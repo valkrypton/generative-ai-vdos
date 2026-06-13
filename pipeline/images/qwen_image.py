@@ -19,6 +19,7 @@ from .util import fit_cover
 
 MODEL = "qwen-image-plus"
 SIZE = "1664*928"  # native 16:9; fit_cover upscales to 1920x1080
+MAX_PROMPT = 1500  # qwen-image-plus accepts well beyond this; warn before cutting
 
 
 class QwenImageProvider(ImageProvider):
@@ -30,11 +31,14 @@ class QwenImageProvider(ImageProvider):
     def generate(self, prompt: str, path: Path, query: Optional[str] = None,
                  negative: Optional[str] = None) -> None:
         base = dashscope_base_url()
+        if len(prompt) > MAX_PROMPT:
+            print(f"  images: WARNING prompt is {len(prompt)} chars, cutting to "
+                  f"{MAX_PROMPT} — some detail at the end will be lost")
         body = {
             "model": MODEL,
             "input": {
                 "messages": [
-                    {"role": "user", "content": [{"text": prompt[:800]}]}
+                    {"role": "user", "content": [{"text": prompt[:MAX_PROMPT]}]}
                 ]
             },
             "parameters": {
