@@ -64,13 +64,24 @@ def generate_scene_image(
         editor.edit(prompt, ref, path)
         return path, editor
 
+    # Merge: global plan negative + per-character negatives + scene negative
+    char_negatives = [
+        c.negative for c in plan.characters
+        if c.negative and c.name in plan.characters_in(scene.image_prompt)
+    ]
+    merged_negative = ", ".join(filter(None, [
+        plan.global_negative,
+        *char_negatives,
+        scene.negative_prompt,
+    ])) or None
+
     chain = [primary]
     if fallback:
         chain += [p for p in PROVIDERS if p is not primary and p.available()]
     last_error = None
     for provider in chain:
         try:
-            provider.generate(prompt, path, query=scene_prompt, negative=scene.negative_prompt)
+            provider.generate(prompt, path, query=scene_prompt, negative=merged_negative)
             return path, provider
         except Exception as e:
             last_error = e

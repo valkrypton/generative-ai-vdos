@@ -21,22 +21,30 @@ POLL_INTERVAL = 15
 BATCH_TIMEOUT = 30 * 60
 
 
-def get_provider(name: Optional[str] = None) -> VideoProvider:
+def get_provider(name: Optional[str] = None, quality: str = "flash") -> VideoProvider:
+    """Pick a video provider.
+
+    quality only affects Wan (flash/turbo/plus); Kling ignores it (always pro mode).
+    """
     if name:
         for p in PROVIDERS:
             if p.name == name:
                 if not p.available():
                     raise RuntimeError(
                         f"video backend '{name}' is not configured (missing API key?)")
+                if isinstance(p, WanProvider):
+                    return WanProvider(quality=quality)
                 return p
         raise RuntimeError(
             f"unknown video backend '{name}' — choices: {', '.join(p.name for p in PROVIDERS)}")
     for p in PROVIDERS:
         if p.available():
+            if isinstance(p, WanProvider):
+                return WanProvider(quality=quality)
             return p
     raise RuntimeError(
-        "no video backend configured — set DASHSCOPE_API_KEY for Wan "
-        "(free trial credit at modelstudio.console.alibabacloud.com, Singapore region)")
+        "no video backend configured — set DASHSCOPE_API_KEY for Wan or "
+        "KLING_ACCESS_KEY + KLING_ACCESS_SECRET for Kling")
 
 
 def _motion_prompt(plan: ShotPlan, scene: Scene) -> str:
@@ -47,15 +55,19 @@ def _motion_prompt(plan: ShotPlan, scene: Scene) -> str:
 
 
 def animate_scenes(plan: ShotPlan, images_dir: Path, out_dir: Path,
-                   backend: Optional[str] = None) -> List[Path]:
+                   backend: Optional[str] = None,
+                   quality: str = "flash") -> List[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
-    provider = get_provider(backend)
-    print(f"  animate: backend = {provider.name}")
+    provider = get_provider(backend, quality=quality)
+    print(f"  animate: backend = {provider.name}"
+          + (f" ({quality})" if isinstance(provider, WanProvider) else ""))
 
     todo = []
-    for i in range(len(plan.scenes)):
+    for i, scene in enumerate(plan.scenes):
         if (out_dir / f"scene_{i:02d}.mp4").exists():
             print(f"  animate: scene {i + 1} clip exists, skipping")
+        elif not scene.animate:
+            print(f"  animate: scene {i + 1} skipped (animate=false — uses Ken Burns)")
         else:
             todo.append(i)
     if todo:

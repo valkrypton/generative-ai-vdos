@@ -117,9 +117,12 @@ def main() -> None:
 
     # New plans get a polish pass automatically; existing plans only with --polish.
     if args.polish or (not is_existing_plan and not args.no_polish):
-        from .script_agent import polish_image_prompts
+        from .script_agent import consistency_review, polish_image_prompts
         print(f"polishing image prompts ({args.model})...")
         plan = polish_image_prompts(plan, model=args.model)
+        (work_dir / "shot_plan.json").write_text(plan.model_dump_json(indent=2))
+        print(f"consistency review ({args.model})...")
+        plan = consistency_review(plan, model=args.model)
         (work_dir / "shot_plan.json").write_text(plan.model_dump_json(indent=2))
 
     print_plan(plan, work_dir)

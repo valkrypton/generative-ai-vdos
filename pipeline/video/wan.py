@@ -18,13 +18,24 @@ from typing import Optional
 from ..env import dashscope_base_url
 from .base import VideoProvider
 
-MODEL = "wan2.2-i2v-flash"  # cheapest i2v tier, silent clips
-RESOLUTION = "720P"         # assembly upscales to 1080p
+# Quality tiers — verify model IDs in your DashScope console if one errors.
+QUALITY_MODELS = {
+    "flash": "wan2.2-i2v-flash",   # default: fast, basic motion
+    "turbo": "wan2.1-i2v-turbo",   # better prompt-following, ~same cost
+    "plus":  "wan2.1-i2v-plus",    # best quality, slower
+}
+RESOLUTION = "720P"
 MAX_DURATION = 5            # seconds — hard cap per clip
 
 
 class WanProvider(VideoProvider):
     name = "wan-i2v"
+
+    def __init__(self, quality: str = "flash") -> None:
+        if quality not in QUALITY_MODELS:
+            raise ValueError(f"wan quality must be flash|turbo|plus, got '{quality}'")
+        self._model = QUALITY_MODELS[quality]
+        self._quality = quality
 
     def available(self) -> bool:
         return bool(os.environ.get("DASHSCOPE_API_KEY"))
@@ -35,7 +46,7 @@ class WanProvider(VideoProvider):
     def submit(self, prompt: str, image_path: Path) -> str:
         img_b64 = base64.b64encode(image_path.read_bytes()).decode()
         body = {
-            "model": MODEL,
+            "model": self._model,
             "input": {
                 "prompt": prompt,
                 "img_url": f"data:image/png;base64,{img_b64}",

@@ -10,6 +10,24 @@ from .schema import ShotPlan
 
 FPS = 30
 
+# Ken Burns motion patterns — cycles through each scene in order.
+# Each entry: (zoom_expr, x_expr, y_expr)
+# `on` = current output frame number; `iw`/`ih`/`zoom` = ffmpeg zoompan variables.
+_KB_MODES = [
+    # zoom in from centre
+    ("1+0.0008*on",    "iw/2-(iw/zoom/2)",       "ih/2-(ih/zoom/2)"),
+    # zoom out from centre
+    ("1.20-0.0008*on", "iw/2-(iw/zoom/2)",       "ih/2-(ih/zoom/2)"),
+    # slow pan left → right
+    ("1.08",           "on*0.8",                  "ih/2-(ih/zoom/2)"),
+    # slow pan right → left
+    ("1.08",           "(iw-iw/zoom)-on*0.8",    "ih/2-(ih/zoom/2)"),
+    # zoom in anchored to top-left corner
+    ("1+0.0008*on",    "0",                       "0"),
+    # zoom in anchored to bottom-right corner
+    ("1+0.0008*on",    "iw-iw/zoom",              "ih-ih/zoom"),
+]
+
 # First present font is used for on_screen_text overlays.
 _FONT = next((f for f in [
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
@@ -126,21 +144,25 @@ def assemble(plan: ShotPlan, work_dir: Path, music_path: Optional[Path] = None) 
             source = "animated"
         else:
             frames = int(dur * FPS)
-            zoom_in = i % 2 == 0  # alternate zoom direction for variety
-            zexpr = f"1+0.0010*on" if zoom_in else f"1.15-0.0010*on"
+            z_expr, x_expr, y_expr = _KB_MODES[i % len(_KB_MODES)]
+            # 0.3 s fade-in/out; cap at 12% of clip so short scenes don't over-fade
+            fade_d = min(0.30, dur * 0.12)
+            fade_in  = f",fade=t=in:st=0:d={fade_d:.2f}"
+            fade_out = f",fade=t=out:st={max(0.0, dur - fade_d):.3f}:d={fade_d:.2f}"
             _run([
                 "ffmpeg", "-y", "-loop", "1", "-framerate", str(FPS), "-i", str(img),
                 "-i", str(mp3),
                 "-filter_complex",
-                f"[0:v]scale=2304:1296,zoompan=z='{zexpr}':d={frames}:"
-                f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps={FPS}{overlay}[v];"
+                f"[0:v]scale=2304:1296,zoompan=z='{z_expr}':d={frames}:"
+                f"x='{x_expr}':y='{y_expr}':s=1920x1080:fps={FPS}"
+                f"{overlay}{fade_in}{fade_out}[v];"
                 f"[1:a]apad[a]",
                 "-map", "[v]", "-map", "[a]",
                 "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-ar", "44100",
                 "-t", f"{dur:.3f}", str(clip),
             ])
-            source = "ken burns"
+            source = f"ken burns #{i % len(_KB_MODES) + 1}"
         scene_durations.append(dur)
         clip_paths.append(clip)
         print(f"  assemble: scene clip {i + 1}/{len(plan.scenes)} ({source})")

@@ -2,7 +2,9 @@
 import re
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+MAX_ANIMATED_SCENES = 2  # hard cap — animating costs DashScope credit
 
 
 class Character(BaseModel):
@@ -11,6 +13,13 @@ class Character(BaseModel):
         description="Full visual description: age, hair, face, every clothing item "
         "with its color, e.g. 'a mid-30s man with short black hair and stubble, wearing "
         "a black zip-up hoodie, dark blue jeans and white sneakers'."
+    )
+    negative: Optional[str] = Field(
+        default=None,
+        description="Traits this character must NEVER have in any scene. Merged automatically "
+        "into the negative_prompt of every scene they appear in. Use for traits the image "
+        "model keeps adding: e.g. 'hair, beard' for a bald character; "
+        "'dark hair, black hair' for a white-haired character.",
     )
 
 
@@ -33,6 +42,13 @@ class Scene(BaseModel):
         description="Optional motion description for the animate stage, e.g. "
         "'the girl is talking, lips moving as she speaks, gesturing with her hands'. "
         "Default: gentle cinematic motion derived from image_prompt.",
+    )
+    animate: bool = Field(
+        default=False,
+        description="True only when real motion is essential — flags waving, characters "
+        "fighting/dancing/running, animals in action, flowing water, crowd movement. "
+        "False for text cards, still portraits, and wide shots where Ken Burns is enough. "
+        "Animating costs DashScope credit; be selective.",
     )
     negative_prompt: Optional[str] = Field(
         default=None,
@@ -64,7 +80,23 @@ class ShotPlan(BaseModel):
         "ONLY by placeholder, e.g. {thief} — the pipeline substitutes the full "
         "description into every scene, guaranteeing a consistent look.",
     )
+    global_negative: Optional[str] = Field(
+        default=None,
+        description="Negative prompt applied to EVERY scene in the video regardless of "
+        "which characters appear. Use for video-wide rules: e.g. "
+        "'changing hairstyle, inconsistent clothing, different face, text, watermark, "
+        "extra limbs, blurry'. Merged with per-character and per-scene negatives automatically.",
+    )
     scenes: List[Scene] = Field(description="8-15 scenes. Scene durations come from the voiceover audio.")
+
+    @model_validator(mode="after")
+    def cap_animated_scenes(self) -> "ShotPlan":
+        animated = [i for i, s in enumerate(self.scenes) if s.animate]
+        if len(animated) > MAX_ANIMATED_SCENES:
+            # Force the extra ones off — keep only the first MAX_ANIMATED_SCENES
+            for i in animated[MAX_ANIMATED_SCENES:]:
+                self.scenes[i].animate = False
+        return self
 
     def characters_in(self, text: str) -> List[str]:
         """Names of characters referenced in text (via {placeholder} or bare name)."""
@@ -92,4 +124,6 @@ class ShotPlan(BaseModel):
         if substituted:
             # collapse double articles produced by "the {name}" -> "the a young boy ..."
             text = re.sub(r"\b(?:the|a|an) (a|an|the)\b", r"\1", text, flags=re.IGNORECASE)
+        # always collapse double spaces — can appear after placeholder substitution
+        text = re.sub(r" {2,}", " ", text).strip()
         return text
