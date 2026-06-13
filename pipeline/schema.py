@@ -124,11 +124,20 @@ class ShotPlan(BaseModel):
             desc = c.description.strip().rstrip(".")
             short = "the " + c.name.replace("_", " ")
             pattern = r"\{" + re.escape(c.name) + r"\}|\b" + re.escape(c.name) + r"\b"
-            # first occurrence -> full description, any further ones -> short ref
-            new, n = re.subn(pattern, lambda m: desc, text, count=1, flags=re.IGNORECASE)
+
+            # Single pass over the ORIGINAL text: first match -> full description,
+            # any further ones -> short ref. One pass (not two) so the substituted
+            # description is never re-scanned — important when a description
+            # contains the character's own name (e.g. "a reddish-brown octopus").
+            seen = {"n": 0}
+
+            def repl(m, desc=desc, short=short, seen=seen):
+                seen["n"] += 1
+                return desc if seen["n"] == 1 else short
+
+            new, n = re.subn(pattern, repl, text, flags=re.IGNORECASE)
             if n:
                 substituted = True
-                new = re.sub(pattern, lambda m: short, new, flags=re.IGNORECASE)
                 text = new
         if substituted:
             # collapse double articles produced by "the {name}" -> "the a young boy ..."

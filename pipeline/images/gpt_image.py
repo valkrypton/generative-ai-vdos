@@ -13,6 +13,7 @@ from .util import fit_cover
 
 class GptImageProvider(ImageProvider):
     name = "gpt-image-1"
+    requires = "OPENAI_API_KEY"
 
     def available(self) -> bool:
         return bool(os.environ.get("OPENAI_API_KEY"))

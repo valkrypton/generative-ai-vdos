@@ -28,17 +28,31 @@ PROVIDERS: List[ImageProvider] = [
 ]
 
 
+# Friendly flag values -> the real provider .name, so IMAGE_BACKEND can be set
+# to "openai" or "free" instead of remembering exact backend ids.
+ALIASES = {
+    "openai": "gpt-image-1",
+    "gpt": "gpt-image-1",
+    "qwen": "qwen-image",
+    "flux": "flux-schnell",
+    "stock": "pexels",
+}
+
+
 def get_provider(name: Optional[str] = None) -> ImageProvider:
-    if name:
-        for p in PROVIDERS:
-            if p.name == name:
-                if not p.available():
-                    raise RuntimeError(
-                        f"image backend '{name}' is not configured (missing API key or package)")
-                return p
+    if not name:
         raise RuntimeError(
-            f"unknown image backend '{name}' — choices: {', '.join(p.name for p in PROVIDERS)}")
-    return next(p for p in PROVIDERS if p.available())
+            "no image backend set — put IMAGE_BACKEND in .env "
+            "(qwen | openai | flux | stock | placeholder) or pass --image-backend")
+    name = ALIASES.get(name.strip().lower(), name)
+    for p in PROVIDERS:
+        if p.name == name:
+            if not p.available():
+                need = f"set {p.requires} in .env" if p.requires else "missing API key or package"
+                raise RuntimeError(f"image backend '{name}' is not configured — {need}")
+            return p
+    raise RuntimeError(
+        f"unknown image backend '{name}' — choices: {', '.join(p.name for p in PROVIDERS)}")
 
 
 def character_refs(plan: ShotPlan, provider: ImageProvider, out_dir: Path) -> dict:
