@@ -1,8 +1,11 @@
 """Stage 1: topic -> refined script -> shot plan JSON (one LLM call).
 
-Provider is picked by the model name: "claude-*" uses Anthropic (ANTHROPIC_API_KEY),
-"gpt-*" uses OpenAI (OPENAI_API_KEY), anything else (e.g. "groq/llama-3.3-70b-versatile")
-goes to the OpenAI-compatible LiteLLM proxy (LITELLM_API_KEY, LITELLM_BASE_URL).
+Pick the backend with the LLM_PROVIDER flag (a friendly name, not a model id):
+"openai" -> OpenAI (OPENAI_API_KEY), "litellm"/"libra" -> the company LiteLLM
+proxy (LITELLM_API_KEY, LITELLM_BASE_URL), "anthropic" -> Claude (ANTHROPIC_API_KEY).
+With no flag set, the first configured key wins (free proxy first). Internally the
+chosen model name still routes: "gpt-*" -> OpenAI, "claude-*" -> Anthropic, anything
+else -> the LiteLLM proxy.
 """
 import json
 import os
@@ -114,10 +117,23 @@ Dialogue and voices:
 """
 
 
+LITELLM_DEFAULT_MODEL = "groq/llama-3.3-70b-versatile"
+
+
 def default_model() -> str:
-    # Prefer the free company LiteLLM proxy when configured.
+    """Pick the shot-plan model. Prefer the LLM_PROVIDER flag (a friendly name,
+    not a model id); fall back to auto-detect from whichever key is present."""
+    provider = os.environ.get("LLM_PROVIDER", "").strip().lower()
+    if provider == "openai":
+        return "gpt-4o-mini"
+    if provider in ("anthropic", "claude"):
+        return "claude-haiku-4-5"
+    if provider in ("litellm", "libra", "company"):
+        return os.environ.get("LITELLM_MODEL", LITELLM_DEFAULT_MODEL)
+
+    # No flag set -> use whatever key is configured, free proxy first.
     if os.environ.get("LITELLM_API_KEY"):
-        return os.environ.get("LITELLM_MODEL", "groq/llama-3.3-70b-versatile")
+        return os.environ.get("LITELLM_MODEL", LITELLM_DEFAULT_MODEL)
     return "claude-haiku-4-5" if os.environ.get("ANTHROPIC_API_KEY") else "gpt-4o-mini"
 
 

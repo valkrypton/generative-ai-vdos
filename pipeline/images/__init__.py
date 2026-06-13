@@ -28,8 +28,21 @@ PROVIDERS: List[ImageProvider] = [
 ]
 
 
+# Friendly flag values -> the real provider .name, so IMAGE_BACKEND can be set
+# to "openai" or "free" instead of remembering exact backend ids.
+ALIASES = {
+    "openai": "gpt-image-1",
+    "gpt": "gpt-image-1",
+    "qwen": "qwen-image",
+    "free": "qwen-image",
+    "flux": "flux-schnell",
+    "stock": "pexels",
+}
+
+
 def get_provider(name: Optional[str] = None) -> ImageProvider:
     if name:
+        name = ALIASES.get(name.strip().lower(), name)
         for p in PROVIDERS:
             if p.name == name:
                 if not p.available():
