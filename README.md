@@ -134,10 +134,11 @@ All stage commands accept an explicit folder (`python -m pipeline.images output/
 ### One-shot alternative
 
 ```bash
-python -m pipeline.run "topic" --approve --animate    # everything in one command
+python -m pipeline.auto "topic"                       # prompt in, final.mp4 out — no gate, no flags
+python -m pipeline.run  "topic" --approve --animate   # same chain, with flags (animation, --until, etc.)
 ```
 
-`pipeline.run` keeps a review gate after the plan (omit `--approve` to stop there), supports `--until <stage>`, and resumes from `state.json` if interrupted.
+`pipeline.auto` runs the whole chain (plan + auto-polish + consistency review → images → voiceover → assemble) with the review gate pre-approved and free defaults (qwen images, no animation); extra flags pass through. `pipeline.run` is the same runner but keeps a review gate after the plan (omit `--approve` to stop there), supports `--until <stage>` and `--animate`, and resumes from `state.json` if interrupted.
 
 ## How it works — what each stage actually does
 

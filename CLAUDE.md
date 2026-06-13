@@ -14,6 +14,7 @@ python -m pipeline.images                  # stage 2 (free via qwen)
 python -m pipeline.video                   # stage 2.5 — DISABLED by default (costs money) — uncomment pipeline/video/__main__.py to re-enable
 python -m pipeline.voiceover               # stage 3 (free)
 python -m pipeline.assemble [--music f]    # stage 4 (free, local ffmpeg)
+python -m pipeline.auto "idea"             # all stages, gate pre-approved (= pipeline.run --approve)
 ```
 
 All stage commands default to the most recently touched `output/*/` folder
