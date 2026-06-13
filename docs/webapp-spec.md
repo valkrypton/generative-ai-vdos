@@ -1,6 +1,10 @@
 # Web Application Specification
 ## AI Video Pipeline — Public SaaS
 
+> **This is the long-term SaaS vision.** What we build first is the lean, single-user,
+> local MVP in [`webapp-mvp-spec.md`](./webapp-mvp-spec.md). Everything below is the
+> upgrade path for after the MVP works.
+
 **Stack:** Next.js 14 (App Router) + Django 5 + DRF + Celery + Redis + PostgreSQL + S3  
 **Hosting:** AWS (ECS Fargate + RDS + ElastiCache + S3 + CloudFront)  
 **Audience:** Public SaaS — anyone can sign up and create videos
