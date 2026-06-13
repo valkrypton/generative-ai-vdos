@@ -59,8 +59,8 @@ def main() -> None:
                         help="Proceed past the shot-plan review gate (.env: AUTO_APPROVE)")
     parser.add_argument("--voice", default=os.environ.get("NARRATOR_VOICE"),
                         help="Narrator voice (.env: NARRATOR_VOICE; default: voiceover.DEFAULT_VOICE)")
-    from .script_agent import default_model
-    parser.add_argument("--model", default=default_model())
+    parser.add_argument("--model", default=None,
+                        help="Override the model id (default: resolved from LLM_PROVIDER)")
     parser.add_argument("--out", default="output")
     parser.add_argument("--music-dir", default="music")
     parser.add_argument("--name", default=None,
@@ -77,6 +77,9 @@ def main() -> None:
     parser.add_argument("--until", choices=STAGES, default=None,
                         help="Stop after this stage (step-by-step runs)")
     args = parser.parse_args()
+    if not args.model:
+        from .script_agent import default_model
+        args.model = default_model()  # errors if LLM_PROVIDER not set
 
     work_dir = Path(args.out) / (args.name or slugify(args.topic))
     work_dir.mkdir(parents=True, exist_ok=True)

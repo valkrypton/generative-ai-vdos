@@ -6,11 +6,12 @@ Usage:
     python -m pipeline.images output/<slug> --backend pexels
 """
 import argparse
+import os
 from pathlib import Path
 
 from ..env import load_env
 from ..schema import ShotPlan
-from . import PROVIDERS, generate_images, generate_scene_image, get_provider
+from . import generate_images, generate_scene_image, get_provider
 
 
 def main() -> None:
@@ -19,8 +20,9 @@ def main() -> None:
     parser.add_argument("work_dir", nargs="?", default=None,
                         help="output/<name> dir (default: the most recent one)")
     parser.add_argument("--scene", type=int, default=None, help="Regenerate only this scene index (0-based)")
-    parser.add_argument("--backend", default=None,
-                        choices=[p.name for p in PROVIDERS], help="Force a specific backend")
+    parser.add_argument("--backend", default=os.environ.get("IMAGE_BACKEND"),
+                        help="Image backend (.env: IMAGE_BACKEND; free/qwen | openai | "
+                             "flux | stock | placeholder)")
     args = parser.parse_args()
 
     from ..run import latest_work_dir

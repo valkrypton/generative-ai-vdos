@@ -18,7 +18,12 @@ def load_env() -> None:
             if not line or line.startswith("#") or "=" not in line:
                 continue
             key, _, value = line.partition("=")
-            key, value = key.strip(), value.strip().strip('"').strip("'")
+            key, value = key.strip(), value.strip()
+            if value[:1] in ('"', "'"):  # quoted: take up to the closing quote
+                end = value.find(value[0], 1)
+                value = value[1:end] if end != -1 else value[1:]
+            else:  # unquoted: drop a trailing inline comment
+                value = value.split(" #", 1)[0].split("\t#", 1)[0].strip()
             if key and value:
                 os.environ.setdefault(key, value)
         return
