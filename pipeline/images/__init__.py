@@ -20,7 +20,7 @@ from .placeholder import PlaceholderProvider
 from .qwen_image import QwenImageProvider
 
 PROVIDERS: List[ImageProvider] = [
-    QwenImageProvider(),  # free — always first
+    QwenImageProvider(),  # free — always first; also does reference-image editing (consistent faces)
     FluxProvider(),       # free tier only — costs money after quota
     PexelsProvider(),
     PlaceholderProvider(),
@@ -41,9 +41,36 @@ def get_provider(name: Optional[str] = None) -> ImageProvider:
     return next(p for p in PROVIDERS if p.available())
 
 
+def character_refs(plan: ShotPlan, provider: ImageProvider, out_dir: Path) -> dict:
+    """Render one clean reference portrait per character (once) so single-character
+    scenes can be edited from them for a consistent face/clothing. Only meaningful
+    for providers that can edit from a reference (qwen-image, gpt-image-1); returns
+    {} otherwise. A character whose portrait fails is simply omitted — its scenes
+    fall back to text-to-image."""
+    if not (plan.characters and hasattr(provider, "edit")):
+        return {}
+    ref_dir = out_dir / "refs"
+    ref_dir.mkdir(parents=True, exist_ok=True)
+    refs = {}
+    print("  images: building character reference portraits (for face consistency)")
+    for c in plan.characters:
+        p = ref_dir / f"{c.name}.png"
+        if not p.is_file():
+            prompt = (f"{plan.style_prefix}, a character reference portrait of "
+                      f"{c.description.strip().rstrip('.')}, neutral standing pose, "
+                      f"plain neutral background, even lighting, full head and body visible")
+            try:
+                provider.generate(prompt, p, negative=c.negative)
+            except Exception as e:
+                print(f"    ref {c.name}: failed ({e}) — scenes will text-to-image instead")
+                continue
+        refs[c.name] = p
+    return refs
+
+
 def generate_scene_image(
     plan: ShotPlan, index: int, out_dir: Path, primary: ImageProvider,
-    fallback: bool = True,
+    fallback: bool = True, char_refs: Optional[dict] = None,
 ) -> Tuple[Path, ImageProvider]:
     """Generate one scene's image. With fallback (auto-picked backend), failures
     fall through the remaining providers; an explicitly forced backend fails loudly."""
@@ -51,6 +78,22 @@ def generate_scene_image(
     path = out_dir / f"scene_{index:02d}.png"
     scene_prompt = plan.expand(scene.image_prompt)
     prompt = f"{plan.style_prefix}, {scene_prompt}"
+
+    # Reference-image consistency: for a scene with exactly ONE character, edit
+    # from that character's reference portrait so the face/clothing stays the same
+    # scene to scene. (qwen-image-edit takes a single reference, so multi-character
+    # scenes can't be locked this way — they fall through to text-to-image.)
+    if char_refs and not scene.reference_image and hasattr(primary, "edit"):
+        named = [n for n in plan.characters_in(scene.image_prompt) if n in char_refs]
+        if len(named) == 1:
+            edit_prompt = (prompt + " Keep the person's face, hair and clothing "
+                           "identical to the reference image.")
+            try:
+                primary.edit(edit_prompt, char_refs[named[0]], path)
+                return path, primary
+            except Exception as e:
+                print(f"  images: scene {index + 1} reference edit failed ({e}); "
+                      "falling back to text-to-image")
 
     if scene.reference_image:
         ref = Path(scene.reference_image)
@@ -99,9 +142,11 @@ def generate_images(plan: ShotPlan, out_dir: Path, backend: Optional[str] = None
         for i, scene in enumerate(plan.scenes):
             chars = plan.characters_in(scene.image_prompt)
             print(f"    scene {i}: {', '.join(chars) if chars else '-'}")
+    refs = character_refs(plan, primary, out_dir)
     paths = []
     for i in range(len(plan.scenes)):
-        path, used = generate_scene_image(plan, i, out_dir, primary, fallback=backend is None)
+        path, used = generate_scene_image(plan, i, out_dir, primary,
+                                          fallback=backend is None, char_refs=refs)
         note = "" if used is primary else f" (fell back to {used.name})"
         print(f"  images: scene {i + 1}/{len(plan.scenes)}{note}")
         paths.append(path)

@@ -112,14 +112,23 @@ class ShotPlan(BaseModel):
 
         Matches both {name} placeholders and bare names (word-boundary,
         case-insensitive) — LLMs frequently forget the braces.
+
+        A character mentioned more than once in the same text gets its full
+        description on the FIRST mention only; later mentions collapse to a
+        short reference (e.g. "the eldest daughter"). Repeating a full
+        description bloats the prompt and can make the image model render the
+        same person twice.
         """
         substituted = False
         for c in self.characters:
             desc = c.description.strip().rstrip(".")
+            short = "the " + c.name.replace("_", " ")
             pattern = r"\{" + re.escape(c.name) + r"\}|\b" + re.escape(c.name) + r"\b"
-            new = re.sub(pattern, desc, text, flags=re.IGNORECASE)
-            if new != text:
+            # first occurrence -> full description, any further ones -> short ref
+            new, n = re.subn(pattern, lambda m: desc, text, count=1, flags=re.IGNORECASE)
+            if n:
                 substituted = True
+                new = re.sub(pattern, lambda m: short, new, flags=re.IGNORECASE)
                 text = new
         if substituted:
             # collapse double articles produced by "the {name}" -> "the a young boy ..."
