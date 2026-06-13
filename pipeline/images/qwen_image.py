@@ -26,6 +26,7 @@ MAX_PROMPT = 1500  # qwen-image-plus accepts well beyond this; warn before cutti
 
 class QwenImageProvider(ImageProvider):
     name = "qwen-image"
+    requires = "DASHSCOPE_API_KEY"
 
     def available(self) -> bool:
         return bool(os.environ.get("DASHSCOPE_API_KEY"))

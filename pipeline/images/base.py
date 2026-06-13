@@ -10,6 +10,7 @@ from typing import Optional
 
 class ImageProvider(ABC):
     name: str = ""
+    requires: str = ""  # env key this backend needs (named in the not-configured error)
 
     @abstractmethod
     def available(self) -> bool:

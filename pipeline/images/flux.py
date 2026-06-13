@@ -9,6 +9,7 @@ from .base import ImageProvider
 
 class FluxProvider(ImageProvider):
     name = "flux-schnell"
+    requires = "REPLICATE_API_TOKEN (+ pip install replicate)"
 
     def available(self) -> bool:
         if not os.environ.get("REPLICATE_API_TOKEN"):

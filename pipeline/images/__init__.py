@@ -34,7 +34,6 @@ ALIASES = {
     "openai": "gpt-image-1",
     "gpt": "gpt-image-1",
     "qwen": "qwen-image",
-    "free": "qwen-image",
     "flux": "flux-schnell",
     "stock": "pexels",
 }
@@ -44,13 +43,13 @@ def get_provider(name: Optional[str] = None) -> ImageProvider:
     if not name:
         raise RuntimeError(
             "no image backend set — put IMAGE_BACKEND in .env "
-            "(free/qwen | openai | flux | stock | placeholder) or pass --image-backend")
+            "(qwen | openai | flux | stock | placeholder) or pass --image-backend")
     name = ALIASES.get(name.strip().lower(), name)
     for p in PROVIDERS:
         if p.name == name:
             if not p.available():
-                raise RuntimeError(
-                    f"image backend '{name}' is not configured (missing API key or package)")
+                need = f"set {p.requires} in .env" if p.requires else "missing API key or package"
+                raise RuntimeError(f"image backend '{name}' is not configured — {need}")
             return p
     raise RuntimeError(
         f"unknown image backend '{name}' — choices: {', '.join(p.name for p in PROVIDERS)}")

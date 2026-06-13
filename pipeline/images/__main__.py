@@ -21,7 +21,7 @@ def main() -> None:
                         help="output/<name> dir (default: the most recent one)")
     parser.add_argument("--scene", type=int, default=None, help="Regenerate only this scene index (0-based)")
     parser.add_argument("--backend", default=os.environ.get("IMAGE_BACKEND"),
-                        help="Image backend (.env: IMAGE_BACKEND; free/qwen | openai | "
+                        help="Image backend (.env: IMAGE_BACKEND; qwen | openai | "
                              "flux | stock | placeholder)")
     args = parser.parse_args()
 
