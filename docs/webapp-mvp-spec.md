@@ -127,6 +127,53 @@ the plan. This avoids a dual source of truth between the JSON and the rows.
 **Project status enum:** `DRAFT → PLANNING → REVIEW → GENERATING → DONE`, with
 `FAILED` reachable from `PLANNING` or `GENERATING`.
 
+### ERD
+
+```
+┌────────────────────────────┐
+│ Project                    │
+│  id            uuid  (pk)  │
+│  prompt        text        │
+│  title         char        │
+│  status        enum        │──── DRAFT→PLANNING→REVIEW→GENERATING→DONE  (·→FAILED)
+│  shot_plan     json  (null)│         ← single source of truth for plan content
+│  image_backend char        │
+│  animate       bool        │
+│  narrator_voice char       │
+│  music         char        │
+│  error         text        │
+│  created_at    datetime    │
+│  updated_at    datetime    │
+└────────────┬───────────────┘
+             │ 1
+       ┌─────┴───────┐
+       │ N           │ N
+┌──────┴──────────┐ ┌┴───────────────────┐
+│ Scene           │ │ JobLog             │
+│  project  fk    │ │  project  fk       │
+│  index    int   │ │  stage    char     │
+│  image_path     │ │  level    char     │
+│  image_status   │ │  message  text     │
+│  image_provider │ │  created_at        │
+└─────────────────┘ └────────────────────┘
+  image state only,    append-only progress
+  index → shot_plan      (also replayed on
+  ["scenes"][index]       SSE reconnect)
+```
+
+State transitions (who triggers them):
+
+| From | Event | To |
+|------|-------|----|
+| — | `POST /projects/` | `PLANNING` |
+| `PLANNING` | `run_plan_stage` succeeds | `REVIEW` |
+| `PLANNING` | `run_plan_stage` raises | `FAILED` |
+| `REVIEW` | `PATCH` (edit plan) | `REVIEW` (no transition) |
+| `REVIEW` | `POST /approve/` | `GENERATING` |
+| `GENERATING` | assemble chord completes | `DONE` |
+| `GENERATING` | any stage raises | `FAILED` |
+| `FAILED` | `POST /approve/` (retry) | `GENERATING` |
+
 ---
 
 ## 5. API
@@ -149,6 +196,65 @@ The review gate (`approve`) is the web equivalent of the CLI's plan→images rev
 gate. Generation never starts until the operator approves, matching the
 review-first preference. (gpt-image-1 is never selected unless explicitly chosen;
 Qwen free default — same money rules as the CLI.)
+
+### Request / response shapes
+
+**`POST /api/projects/`** — create + queue planning. Only `prompt` is required; the
+rest fall back to the `.env` flags (D3).
+```jsonc
+// request
+{ "prompt": "a lonely lighthouse keeper befriends a storm petrel",
+  "image_backend": "qwen",      // optional override; else IMAGE_BACKEND
+  "animate": false,              // optional; spends credit if true
+  "narrator_voice": "en-US-AndrewNeural", // optional
+  "music": "calm" }             // optional mood
+// 201 response
+{ "id": "9f1c…", "status": "PLANNING", "title": "",
+  "created_at": "2026-06-14T10:00:00Z" }
+```
+
+**`GET /api/projects/{id}/`** — detail (poll-free; SSE drives live updates).
+```jsonc
+{ "id": "9f1c…", "status": "REVIEW", "title": "The Keeper and the Petrel",
+  "image_backend": "qwen", "animate": false,
+  "shot_plan": { /* full ShotPlan dict — schema.py contract */ },
+  "scenes": [
+    { "index": 0, "image_status": "DONE",
+      "image_path": "images/scene_00.png", "image_provider": "qwen-image" },
+    { "index": 1, "image_status": "PENDING",
+      "image_path": "", "image_provider": "" }
+  ],
+  "log": [ { "stage": "plan", "level": "info",
+             "message": "consistency review passed",
+             "created_at": "2026-06-14T10:00:42Z" } ],
+  "error": "" }
+```
+Before approve, `scenes` is `[]` (no rows yet — D1); the plan is read from `shot_plan`.
+
+**`PATCH /api/projects/{id}/`** — edit the plan while `REVIEW`. Body is a partial:
+`{ "shot_plan": { … }, "image_backend": "openai", "animate": true }`. Editing in any
+other status → `409 Conflict`. Returns the updated detail object.
+
+**`POST /api/projects/{id}/approve/`** — no body. Builds `Scene` rows from the final
+plan, enqueues the assets chord, → `GENERATING`. `202` with `{ "status": "GENERATING" }`.
+Calling it from `REVIEW` or `FAILED` is valid (the latter is retry); any other
+status → `409`.
+
+**`POST /api/projects/{id}/scenes/{index}/regenerate/`** — re-run one image. Optional
+`{ "image_backend": "gpt-image-1" }` to force a backend for this scene only (explicit
+opt-in to the paid backend). `202`; the scene's `image_status` returns to `RUNNING`
+and progress streams over SSE. Allowed in `REVIEW` and `DONE`.
+
+**`GET /api/projects/{id}/events/`** — `text/event-stream`. Each event:
+```
+data: {"stage":"images","level":"info","message":"scene 3/12 done",
+       "status":"GENERATING","scene_index":3}
+```
+On connect: replay current `status` + recent `JobLog`, then tail live. Client closes
+on terminal `status` (`DONE`/`FAILED`).
+
+**Errors** use DRF defaults: `400` (validation), `404` (no such project/scene),
+`409` (action not allowed in current status). Body: `{ "detail": "…" }`.
 
 ---
 
