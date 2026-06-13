@@ -1,9 +1,13 @@
 """Stage 1: topic -> refined script -> shot plan JSON (one LLM call).
 
 Provider is picked by the model name: "claude-*" uses Anthropic (ANTHROPIC_API_KEY),
-"gpt-*" uses OpenAI (OPENAI_API_KEY).
+"gpt-*" uses OpenAI (OPENAI_API_KEY), anything else (e.g. "groq/llama-3.3-70b-versatile")
+goes to the OpenAI-compatible LiteLLM proxy (LITELLM_API_KEY, LITELLM_BASE_URL).
 """
+import json
 import os
+
+from pydantic import ValidationError
 
 from .schema import ShotPlan
 
@@ -111,14 +115,31 @@ Dialogue and voices:
 
 
 def default_model() -> str:
+    # Prefer the free company LiteLLM proxy when configured.
+    if os.environ.get("LITELLM_API_KEY"):
+        return os.environ.get("LITELLM_MODEL", "groq/llama-3.3-70b-versatile")
     return "claude-haiku-4-5" if os.environ.get("ANTHROPIC_API_KEY") else "gpt-4o-mini"
 
 
 def _parse_with_llm(user_content: str, model: str) -> ShotPlan:
-    if model.startswith("gpt"):
-        from openai import OpenAI
+    if model.startswith("claude"):
+        import anthropic
 
-        client = OpenAI()  # reads OPENAI_API_KEY from env
+        client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
+        response = client.messages.parse(
+            model=model,
+            max_tokens=8192,
+            system=SYSTEM,
+            messages=[{"role": "user", "content": user_content}],
+            output_format=ShotPlan,
+        )
+        return response.parsed_output
+
+    from openai import OpenAI
+
+    if model.startswith("gpt"):
+        # native OpenAI — strict json_schema parse is reliable here
+        client = OpenAI()  # reads OPENAI_API_KEY
         completion = client.chat.completions.parse(
             model=model,
             messages=[
@@ -129,17 +150,55 @@ def _parse_with_llm(user_content: str, model: str) -> ShotPlan:
         )
         return completion.choices[0].message.parsed
 
-    import anthropic
+    # any other id (e.g. groq/llama-3.3-70b-versatile) -> company LiteLLM proxy.
+    key = os.environ.get("LITELLM_API_KEY")
+    if not key:
+        raise RuntimeError(
+            f"model '{model}' needs LITELLM_API_KEY (company proxy); "
+            "set it in .env or use a gpt-*/claude-* model")
+    base = (os.environ.get("LITELLM_BASE_URL") or "https://litellm.arbisoft.com").rstrip("/")
+    client = OpenAI(base_url=base, api_key=key)
+    return _parse_json_mode(client, model, user_content)
 
-    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
-    response = client.messages.parse(
-        model=model,
-        max_tokens=8192,
-        system=SYSTEM,
-        messages=[{"role": "user", "content": user_content}],
-        output_format=ShotPlan,
-    )
-    return response.parsed_output
+
+# JSON schema embedded in the prompt for proxy models. Groq/Cerebras enforce
+# json_schema via a flaky tool-call wrapper (it intermittently nests the whole
+# plan in a {"json_string": "..."} envelope that fails validation), so we use
+# plain JSON mode, hand the model the schema, and validate with Pydantic.
+_SCHEMA_HINT = (
+    "Respond with ONLY a single JSON object — no markdown, no code fences, no "
+    "function wrapper, no commentary. It must match this exact JSON schema:\n\n"
+    + json.dumps(ShotPlan.model_json_schema())
+)
+
+
+def _parse_json_mode(client, model: str, user_content: str, tries: int = 3) -> ShotPlan:
+    messages = [
+        {"role": "system", "content": SYSTEM + "\n\n" + _SCHEMA_HINT},
+        {"role": "user", "content": user_content},
+    ]
+    last_err = None
+    for _ in range(tries):
+        completion = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            response_format={"type": "json_object"},
+        )
+        raw = completion.choices[0].message.content or ""
+        try:
+            data = json.loads(raw)
+            # safety net: some proxies still hand back the tool-call envelope
+            if isinstance(data, dict) and list(data) == ["json_string"]:
+                data = json.loads(data["json_string"])
+            return ShotPlan.model_validate(data)
+        except (json.JSONDecodeError, ValidationError) as e:
+            last_err = e
+            messages.append({"role": "assistant", "content": raw})
+            messages.append({"role": "user", "content": (
+                f"That response was invalid ({e}). Return ONLY the corrected "
+                "JSON object matching the schema — nothing else.")})
+    raise RuntimeError(
+        f"model '{model}' did not return a valid shot plan after {tries} tries: {last_err}")
 
 
 def generate_shot_plan(topic: str, model: str = "claude-haiku-4-5") -> ShotPlan:
