@@ -22,8 +22,10 @@ All stage commands default to the most recently touched `output/*/` folder
 `python -m pipeline.run "topic" --approve --animate` is the one-shot path with
 resumable `state.json`.
 
-There is no test suite. Verify changes by running stages against a copy of
-`examples/the-sharing-berry/` with `--backend placeholder` (free, no keys needed).
+No real test suite — just `tests/test_expand.py` (plain asserts for the
+character-substitution logic, run `python -m tests.test_expand`). Verify other
+changes by running stages against a copy of `examples/the-sharing-berry/` with
+`--backend placeholder` (free, no keys needed).
 
 ## Money rules
 
