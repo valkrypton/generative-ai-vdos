@@ -8,6 +8,7 @@ Usage:
 """
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -18,6 +19,11 @@ from .schema import ShotPlan
 load_env()
 
 STAGES = ["plan", "images", "animate", "voice", "assemble"]
+
+
+def _flag(name: str) -> bool:
+    """A .env feature flag is on for 1/true/yes/on (case-insensitive)."""
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def slugify(text: str) -> str:
@@ -47,25 +53,27 @@ def save_state(work_dir: Path, state: dict) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Topic -> finished YouTube video")
     parser.add_argument("topic", help="Topic or rough script")
-    parser.add_argument("--approve", action="store_true",
-                        help="Proceed past the shot-plan review gate")
-    parser.add_argument("--voice", default=None,
-                        help="Narrator voice (default: voiceover.DEFAULT_VOICE)")
+    # Defaults come from .env feature flags so a plain run needs no CLI params;
+    # passing the flag on the command line still overrides the .env value.
+    parser.add_argument("--approve", action="store_true", default=_flag("AUTO_APPROVE"),
+                        help="Proceed past the shot-plan review gate (.env: AUTO_APPROVE)")
+    parser.add_argument("--voice", default=os.environ.get("NARRATOR_VOICE"),
+                        help="Narrator voice (.env: NARRATOR_VOICE; default: voiceover.DEFAULT_VOICE)")
     from .script_agent import default_model
     parser.add_argument("--model", default=default_model())
     parser.add_argument("--out", default="output")
     parser.add_argument("--music-dir", default="music")
     parser.add_argument("--name", default=None,
                         help="Output folder name (default: slug of the topic text)")
-    parser.add_argument("--image-backend", default=None,
-                        help="Force an image provider (see pipeline/images: "
-                             "flux-schnell, gpt-image-1, pexels, placeholder)")
-    parser.add_argument("--animate", action="store_true",
-                        help="Animate scene stills into video clips (needs a video "
-                             "backend, e.g. DASHSCOPE_API_KEY for Wan)")
-    parser.add_argument("--video-backend", default=None,
-                        help="Force a video provider (see pipeline/video: wan-i2v); "
-                             "implies --animate")
+    parser.add_argument("--image-backend", default=os.environ.get("IMAGE_BACKEND"),
+                        help="Force an image provider (.env: IMAGE_BACKEND; see "
+                             "pipeline/images: flux-schnell, gpt-image-1, pexels, placeholder)")
+    parser.add_argument("--animate", action="store_true", default=_flag("ANIMATE"),
+                        help="Animate scene stills into video clips (.env: ANIMATE; needs a "
+                             "video backend, e.g. DASHSCOPE_API_KEY for Wan)")
+    parser.add_argument("--video-backend", default=os.environ.get("VIDEO_BACKEND"),
+                        help="Force a video provider (.env: VIDEO_BACKEND; see "
+                             "pipeline/video: wan-i2v); implies --animate")
     parser.add_argument("--until", choices=STAGES, default=None,
                         help="Stop after this stage (step-by-step runs)")
     args = parser.parse_args()
