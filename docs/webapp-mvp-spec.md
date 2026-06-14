@@ -521,3 +521,214 @@ python manage.py runserver           # http://127.0.0.1:8000 → redirects to Co
 
 `.env` (the existing one) drives provider/flag config **and** the `COGNITO_*` settings
 — never committed.
+
+---
+
+## 13. AI-First Execution Plan (epics → work items)
+
+This section operationalises the spec above following Arbisoft's **ai-first-engineering**
+skill: when agents generate much of the implementation, *planning quality and acceptance
+criteria matter more than typing speed*. Every work item below therefore carries an
+explicit **contract**, **measurable acceptance criteria**, **tests & edge cases**, and a
+**review focus** — so "done" is verifiable and review targets system behaviour, not style.
+
+**Global Definition of Ready (DoR)** — a ticket may start only when it has: a contract
+(interface in/out), acceptance criteria, named test cases, and its `.env`/config inputs
+listed. **Definition of Done (DoD)** — code + passing tests (incl. the edge cases named),
+the acceptance criteria demonstrably met, no secrets added (pre-commit hook green), and a
+review against the stated focus. Style is delegated to automation (formatter/linter), not
+review.
+
+Epics map 1:1 to the Plane modules in *Arbisoft Open Source Projects*:
+
+| Epic (Plane module) | Lead | Spec refs |
+|---------------------|------|-----------|
+| **A. Authentication & Signup (Backend)** | Zahid | §2, §3, §4, §4a, §6 |
+| **B. Web Application (Front-end)** | Ali Tariq | §5, §8, §9 |
+| **C. Video Generation Pipeline** | Laraib | §5, §6, §7 |
+
+Cross-cutting items (data models, async infra) sit in Epic A as the backend foundation
+the other epics build on. Jawad floats across all three.
+
+---
+
+### Epic A — Authentication & Signup (Backend) · *lead: Zahid*
+
+**A1. Backend scaffolding — Django 5.2 + DRF + `.venv-web`**
+- **Contract:** A `webapp/` Django 5.2 project + DRF installed in a Python 3.12 `.venv-web`;
+  `requirements-web.txt` pins `Django>=5.2,<5.3`, `djangorestframework>=3.15`. The CLI's
+  3.9 `.venv` and `pipeline/` are untouched.
+- **Acceptance criteria:** `python manage.py check` passes; `runserver` boots; `pipeline/`
+  imports unchanged; CLI still runs from its own venv.
+- **Tests & edge cases:** smoke test imports `pipeline.schema` from the web venv; CI asserts
+  two venvs don't share deps; missing `.env` → clear startup error, not a stack trace.
+- **Review focus:** dependency isolation, no accidental coupling into `pipeline/`.
+
+**A2. Data models — UserProfile / Project / Scene / JobLog (§4)**
+- **Contract:** Four models exactly per §4, with the `Project.status` enum
+  `DRAFT→PLANNING→REVIEW→GENERATING→DONE (·→FAILED)` and `owner` FK indexed.
+- **Acceptance criteria:** migrations apply on a clean SQLite file; `Project.shot_plan` is
+  the single source of truth (no scene content duplicated in `Scene`); `Scene` rows hold
+  image state only.
+- **Tests & edge cases:** state-transition table (§4) enforced (illegal transition raises);
+  deleting a Project cascades `Scene`/`JobLog`; `stale` defaults False.
+- **Review focus:** data integrity, single-source-of-truth invariant (D1), index on `owner`.
+
+**A3. AWS Cognito Hosted-UI OAuth (§4a)**
+- **Contract:** `GET /auth/login` → Hosted UI; `GET /auth/callback?code=…` exchanges code for
+  ID+access+refresh tokens; `POST /auth/logout` clears session + Cognito logout. Config from
+  `COGNITO_*` env only.
+- **Acceptance criteria:** a configured pool lets a user sign up (incl. Google IdP) and land
+  on Home with a session cookie; Django stores **no** passwords.
+- **Tests & edge cases:** invalid/expired `code` → 401; state/CSRF param verified; refresh
+  flow on expired access token; missing `COGNITO_*` → explicit config error.
+- **Review focus:** security assumptions — token exchange, session fixation, secrets only in `.env`.
+
+**A4. JWT (JWKS) verification + just-in-time UserProfile (§4a)**
+- **Contract:** Every authed request verifies the Cognito JWT against the pool's JWKS
+  (issuer + audience + expiry); DRF resolves `request.user` → get-or-create `UserProfile`
+  keyed by `cognito_sub`.
+- **Acceptance criteria:** first login provisions a profile from verified claims; subsequent
+  logins reuse it; tampered/expired tokens rejected.
+- **Tests & edge cases:** wrong `aud`/`iss` → 401; expired token → 401; JWKS key rotation
+  handled (refetch); duplicate concurrent first-login is idempotent (one profile).
+- **Review focus:** correctness of signature/claim verification; no trust of unverified claims.
+
+**A5. Per-user isolation (§4a)**
+- **Contract:** Every `/api/projects/...` view filters `owner=request.user`; a foreign or
+  missing id returns **404** (not 403, ids non-enumerable); anonymous → **401**.
+- **Acceptance criteria:** user B cannot read, mutate, or download user A's project or media;
+  media serving also enforces ownership.
+- **Tests & edge cases:** cross-user GET/PATCH/DELETE/download all 404; anonymous → 401;
+  direct media path traversal blocked.
+- **Review focus:** authorization on **every** path incl. SSE + media; behavioral regression
+  tests for isolation.
+
+**A6. Celery + Redis async infrastructure (§6)**
+- **Contract:** Celery 5.4 + Redis as broker/result/pub-sub; tasks `run_plan_stage`,
+  `run_refine_stage`, `run_image_stage`, `run_voice_stage`, `run_assemble_stage` wrap the
+  existing `pipeline/` functions as a library (no shelling out).
+- **Acceptance criteria:** approve enqueues the chord
+  `group(images) | voice | assemble`; each task publishes progress to `project:{id}:events`
+  and persists `JobLog`.
+- **Tests & edge cases:** any task raising sets `status=FAILED` + error JobLog + terminal SSE
+  event; worker restart mid-job leaves consistent state; Qwen rate-limit lowers concurrency
+  (D4), no backpressure code.
+- **Review focus:** error handling, deployment safety, the FAILED-path contract.
+
+---
+
+### Epic B — Web Application (Front-end) · *lead: Ali Tariq*
+
+**B1. App shell + auth-gated layout (§9)**
+- **Contract:** Server-rendered base template + vanilla JS; persistent header shows the
+  signed-in user + Log out; unauthenticated visits redirect to Cognito Hosted UI. No npm/bundler.
+- **Acceptance criteria:** matches `mockup.html`; anon → redirect; signed-in → Home with
+  identity shown.
+- **Tests & edge cases:** expired session mid-navigation → redirect, not a 500; logout clears
+  session + Cognito.
+- **Review focus:** auth gating on every page; no client-side secret exposure.
+
+**B2. Index — submit idea + project list (§5 `POST/GET /api/projects/`, §9.1)**
+- **Contract:** Prompt box + options (image backend, animate toggle **with credit warning**,
+  voice) → `POST /api/projects/` → redirect to project page; below, the caller's projects with
+  status badges.
+- **Acceptance criteria:** only `prompt` required (rest fall back to `.env`, D3); animate is
+  off by default and shows the DashScope-credit warning before enabling.
+- **Tests & edge cases:** empty prompt → inline validation (no request); list shows only the
+  user's projects; gpt-image-1 never preselected.
+- **Review focus:** money rules surfaced in UI (animate/gpt-image-1), correct default fallbacks.
+
+**B3. Plan review + revise UI (§5 `PATCH`/`refine`, §9.2 REVIEW)**
+- **Contract:** REVIEW screen offers both paths — a **Refine** box → `POST /refine/` (LLM) and
+  inline **manual edit** → `PATCH /shot_plan` — plus Approve / Delete.
+- **Acceptance criteria:** refine shows a spinner during `PLANNING` and updates the plan via
+  SSE; manual edits persist; editing outside REVIEW → 409 surfaced to the user.
+- **Tests & edge cases:** concurrent refine + manual edit resolves to one source of truth;
+  approve disabled until a plan exists; 409 handled gracefully.
+- **Review focus:** the review gate is enforced (no generation pre-approve); single-source plan.
+
+**B4. Generation screen + live progress via SSE (§8, §9.2 GENERATING)**
+- **Contract:** Subscribe to `GET /api/projects/{id}/events/` with `EventSource`; render the
+  log live and fill the image gallery as each scene lands (PENDING→RUNNING→DONE).
+- **Acceptance criteria:** ≥1 event per stage rendered; on (re)connect the client replays
+  current status + recent JobLog then tails; stream closes on terminal status.
+- **Tests & edge cases:** late-joiner/refresh shows correct state (replay); reconnect after
+  drop loses no terminal event; FAILED renders error + retry.
+- **Review focus:** reconnect/replay correctness; no busy-polling fallback.
+
+**B5. Asset editing panels — images / voiceover / video (§5 regenerate*/revoice/reassemble, §9.2 DONE)**
+- **Contract:** Three edit-then-regenerate panels: image grid (per-image **Regenerate** +
+  **Regenerate all**), per-scene narration/voice (**Re-voice** + **Regenerate all voiceovers**),
+  and `<video>` + Download + **Rebuild video** (highlighted when `stale`).
+- **Acceptance criteria:** regenerating an image/voiceover sets `stale=true` and the Rebuild
+  button highlights; `reassemble/` clears `stale`; iterating never re-runs the LLM.
+- **Tests & edge cases:** force gpt-image-1 on a single scene works and is explicit-only;
+  stale indicator accurate after partial regen; failed tile shows inline error + retry.
+- **Review focus:** stale/`final.mp4` consistency; money rules (explicit paid backend) in UI.
+
+---
+
+### Epic C — Video Generation Pipeline · *lead: Laraib*
+
+> The engine already exists in `pipeline/`. These items wrap/verify it behind the web tasks
+> (§6) and the spec's API — *reuse, don't rewrite* (§3). Each item's contract is the Celery
+> task + the `pipeline/` function it wraps.
+
+**C1. Plan stage — `run_plan_stage` (§6)**
+- **Contract:** Wraps `script_agent` (plan + **auto-polish + consistency review**, run
+  automatically); saves `shot_plan`; `PLANNING → REVIEW`.
+- **Acceptance criteria:** a prompt yields a valid `ShotPlan` (schema.py); polish + review run
+  without manual flags; subscribe/CTA scenes only for listicle-style (story videos end on the
+  final beat).
+- **Tests & edge cases:** LLM/JSON-shape failure → FAILED + error log; character looks never
+  inlined per scene (consistency enforced by code, not the LLM).
+- **Review focus:** schema-contract conformance; existing consistency invariants preserved.
+
+**C2. Refine stage — `run_refine_stage` (§5 refine, §6)**
+- **Contract:** Wraps `script_agent.revise_shot_plan(plan, instruction)` (+ re-run
+  polish/review); REVIEW-only; saves revised `shot_plan`, back to REVIEW.
+- **Acceptance criteria:** a natural-language instruction measurably changes the plan; polish +
+  review re-run as for a fresh plan.
+- **Tests & edge cases:** refine outside REVIEW → 409; empty/garbage instruction → no
+  destructive change; idempotent re-runs.
+- **Review focus:** plan integrity across edits; no character-consistency regressions.
+
+**C3. Image stage — `run_image_stage` (§6, money rules)**
+- **Contract:** Wraps `images.get_provider(...).generate(...)` per scene; honors character
+  refs/negatives via `ShotPlan.expand()`; provider order Qwen(free)→Flux→Pexels→placeholder,
+  **gpt-image-1 only on explicit opt-in**.
+- **Acceptance criteria:** per-scene status streamed; fallback chain ends at placeholder;
+  `global_negative` + `Character.negative` merged into every scene.
+- **Tests & edge cases:** Qwen rate-limit falls back, not crashes; gpt-image-1 never
+  auto-selected; negatives respected (no drawn "negated" traits).
+- **Review focus:** money rules (no surprise paid calls); character-consistency code path.
+
+**C4. Voiceover stage — `run_voice_stage` (§6)**
+- **Contract:** Wraps `pipeline.voiceover` (edge-tts, `boundary="WordBoundary"`); one scene
+  when `scene_index` set, else all; emits mp3 + `.words.json`.
+- **Acceptance criteria:** word-timing JSON present for captions; re-voice updates
+  `shot_plan` + that scene's audio only and sets `stale=true`.
+- **Tests & edge cases:** missing word timings → caught (captions depend on them); voice
+  override applies; all-vs-single scope correct.
+- **Review focus:** caption-timing contract; stale propagation.
+
+**C5. Assembly stage — `run_assemble_stage` + download (§5 download/reassemble, §6)**
+- **Contract:** Wraps `pipeline.assemble` (FFmpeg, absolute `.resolve()` paths,
+  `ffmpeg-full`); scene durations **measured from the mp3s**, never the plan; clears `stale`;
+  `GENERATING → DONE`. `GET /download/` serves the owner's `final.mp4`.
+- **Acceptance criteria:** `final.mp4` matches what the CLI produces from the same inputs;
+  `reassemble/` refreshes the video and clears `stale`.
+- **Tests & edge cases:** missing libass/`ffmpeg-full` → actionable error; download enforces
+  ownership (404 otherwise); durations come from audio.
+- **Review focus:** the duration invariant; deployment dep (`ffmpeg-full`); media authz.
+
+**C6. Animation stage (opt-in, money-gated) — `run_video_stage` (§7)**
+- **Contract:** Only when `animate=true`; inserts between images and voice; capped at
+  `MAX_ANIMATED_SCENES` (2) by the existing `ShotPlan` validator; Wan constants stay hardcoded
+  in `pipeline/video/wan.py`.
+- **Acceptance criteria:** off by default; the web layer never raises the cap; UI credit
+  warning shown before enabling.
+- **Tests & edge cases:** cap enforced (3rd scene rejected); animation disabled path is the
+  default; never enabled implicitly.
+- **Review focus:** money rules (DashScope credit) — the highest-risk item; explicit opt-in only.
