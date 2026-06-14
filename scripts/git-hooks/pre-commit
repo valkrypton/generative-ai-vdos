@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Block secrets from ever being committed. Zero dependencies (bash + git + grep).
+# Install once per clone:  git config core.hooksPath scripts/git-hooks
+# It scans only STAGED additions, so it never touches your working tree or history.
+set -euo pipefail
+
+red() { printf '\033[1;31m%s\033[0m\n' "$*" >&2; }
+ylw() { printf '\033[33m%s\033[0m\n' "$*" >&2; }
+
+fail=0
+report() { red "  ✗ $1"; fail=1; }
+
+# Files that are safe even though they look env-ish.
+is_allowed() {
+  case "$1" in
+    *.env.example|.env.example|*.env.sample|.env.sample|*.env.template|.env.template) return 0 ;;
+    scripts/git-hooks/pre-commit) return 0 ;;  # this file documents patterns
+  esac
+  return 1
+}
+
+staged=$(git diff --cached --name-only --diff-filter=ACM || true)
+[ -z "$staged" ] && exit 0
+
+# 1) Reject secret-bearing FILENAMES outright -------------------------------
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  is_allowed "$f" && continue
+  case "$f" in
+    .env|.env.*|*/.env|*/.env.* )
+      report "$f — .env files hold real keys; commit .env.example instead." ;;
+    *.pem|*.key|*.p12|*.pfx|*.keystore|*.jks )
+      report "$f — looks like a private key / keystore." ;;
+    */id_rsa|id_rsa|*/id_ed25519|id_ed25519|*/credentials|credentials|*.pkcs12 )
+      report "$f — looks like an SSH/cloud credential file." ;;
+  esac
+done <<EOF
+$staged
+EOF
+
+# 2) Scan STAGED ADDED LINES for secret-looking CONTENT ---------------------
+# Only added lines (+), excluding the +++ file header.
+added=$(git diff --cached -U0 --diff-filter=ACM -- $(printf '%s\n' "$staged" | grep -vE '\.env\.(example|sample|template)$' || true) 2>/dev/null \
+        | grep -E '^\+' | grep -Ev '^\+\+\+' || true)
+
+scan() {  # scan <regex> <human message>
+  if printf '%s\n' "$added" | grep -Eiq -e "$1"; then
+    report "$2"
+  fi
+}
+
+scan '-----BEGIN ([A-Z ]+ )?PRIVATE KEY-----'                     "a PEM private key block."
+scan 'AKIA[0-9A-Z]{16}'                                           "an AWS access key id (AKIA…)."
+scan 'aws_secret_access_key[[:space:]]*[:=]'                      "an AWS secret access key."
+scan 'sk-[A-Za-z0-9_-]{20,}'                                      "an OpenAI-style secret key (sk-…)."
+scan '(xox[baprs]-[A-Za-z0-9-]{10,})'                             "a Slack token."
+scan 'AIza[0-9A-Za-z_-]{30,}'                                     "a Google API key (AIza…)."
+# Known project secrets assigned a real (non-empty, non-placeholder) value:
+scan '(OPENAI_API_KEY|DASHSCOPE_API_KEY|LITELLM_API_KEY|ANTHROPIC_API_KEY|GOOGLE_API_KEY|PEXELS_API_KEY|REPLICATE_API_TOKEN|COGNITO_APP_CLIENT_SECRET|AWS_SECRET_ACCESS_KEY)[[:space:]]*[:=][[:space:]]*["'\'']?[^"'\''[:space:]#]{6,}' \
+     "a project API key/secret with a real value (use .env, never commit)."
+
+if [ "$fail" -ne 0 ]; then
+  red ""
+  red "COMMIT BLOCKED — possible secret(s) detected (see above)."
+  ylw "Put secrets in .env (gitignored). If this is a genuine false positive,"
+  ylw "fix the value/filename, or as a last resort: git commit --no-verify"
+  exit 1
+fi
+exit 0

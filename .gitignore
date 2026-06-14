@@ -1,5 +1,16 @@
-# Secrets — never commit real keys; use .env.example as the template
+# Secrets — never commit real keys; use .env.example as the template.
+# Also enforced by scripts/git-hooks/pre-commit (see CLAUDE.md → Secrets).
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+id_rsa
+id_ed25519
+credentials
 
 # Python
 .venv/

@@ -88,6 +88,21 @@ changes by running stages against a copy of `examples/the-sharing-berry/` with
 - Browser automation of AI web UIs (AI Studio, Flow, etc.) was proposed and
   rejected — API-only integrations.
 
+## Secrets — never commit keys (enforced)
+
+- **Real keys live only in `.env`** (gitignored): `OPENAI_API_KEY`, `DASHSCOPE_API_KEY`,
+  `DASHSCOPE_API_URL`, `LITELLM_API_KEY`, `GOOGLE_API_KEY`, and the web app's `COGNITO_*`.
+  Never paste a real key into chat, code, docs, or a commit — only `.env`.
+- **`.env.example` is the only committed env file** — keys present, values empty.
+- A **pre-commit hook** (`scripts/git-hooks/pre-commit`, zero-deps) blocks commits that
+  add secret-looking files (`.env`, `*.pem`, `*.key`, `id_rsa`, …) or content (PEM
+  blocks, `sk-…`, `AKIA…`, `AIza…`, known `*_API_KEY=<real value>`). It scans only
+  **staged additions**. Activate it once per clone:
+  ```bash
+  git config core.hooksPath scripts/git-hooks
+  ```
+- If it false-positives, fix the value/filename; `--no-verify` is a last resort, not a habit.
+
 ## Conventions
 
 - Python 3.9 compatible (no `X | None`, use `Optional`).
