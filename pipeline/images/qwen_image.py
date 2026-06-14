@@ -18,10 +18,17 @@ from ..env import dashscope_base_url
 from .base import ImageProvider
 from .util import fit_cover
 
-MODEL = "qwen-image-plus"
+DEFAULT_MODEL = "qwen-image"  # free new-user quota; the premium tier bills
 EDIT_MODEL = "qwen-image-edit"  # reference-image editing: same look in a new scene
 SIZE = "1664*928"  # native 16:9; fit_cover upscales to 1920x1080
-MAX_PROMPT = 1500  # qwen-image-plus accepts well beyond this; warn before cutting
+MAX_PROMPT = 1500  # qwen-image accepts well beyond this; warn before cutting
+
+
+def _gen_model() -> str:
+    """Text-to-image model. Free `qwen-image` by default; opt into the paid
+    `qwen-image-plus` (or any other) ONLY by setting QWEN_IMAGE_MODEL in .env.
+    Read at call time because .env loads after this module is imported."""
+    return os.environ.get("QWEN_IMAGE_MODEL", DEFAULT_MODEL)
 
 
 class QwenImageProvider(ImageProvider):
@@ -59,7 +66,7 @@ class QwenImageProvider(ImageProvider):
         if len(prompt) > MAX_PROMPT:
             print(f"  images: WARNING prompt is {len(prompt)} chars, cutting to "
                   f"{MAX_PROMPT} — some detail at the end will be lost")
-        self._post(MODEL, [{"text": prompt[:MAX_PROMPT]}], path, {
+        self._post(_gen_model(), [{"text": prompt[:MAX_PROMPT]}], path, {
             "size": SIZE,
             "n": 1,
             # qwen-image excels at text rendering and its prompt extender
