@@ -92,6 +92,7 @@
     <button data-s="review">Project · Review</button>
     <button data-s="gen">Project · Generating</button>
     <button data-s="done">Project · Done</button>
+    <button data-s="fail">Project · Failed</button>
   </nav>
 </header>
 <main>
@@ -238,18 +239,24 @@
   </div>
   <p class="sub">Tweak any asset and rebuild. Editing images or narration never re-runs the LLM.</p>
 
-  <div class="banner stale">⚠️ An image or voiceover changed since the last build — the video is out of date.
-    <span style="margin-left:auto"></span><button class="btn warn sm">Rebuild video</button></div>
+  <div class="banner" style="background:#16331f;border-color:#2c5544;color:#9fe0bb">
+    ✓ Video is up to date — rendered from the current images &amp; voiceover.
+    <span style="margin-left:auto"></span><span class="small muted">Editing an asset below marks it <b>stale</b> and lights up “Rebuild video”.</span></div>
 
   <!-- VIDEO -->
   <h2>Video</h2>
   <div class="card">
-    <div class="videobox"><div class="play">▶</div></div>
+    <video class="videobox" controls preload="metadata" style="width:100%;height:auto"
+           poster="" src="../output/embracing-the-wave-a-tale-of-courage/final.mp4">
+      Your browser can’t play this video — it points at a local <code>output/&lt;id&gt;/final.mp4</code>.
+    </video>
     <div class="toolbar" style="margin-top:12px;margin-bottom:0">
-      <button class="btn ghost sm">⬇ Download final.mp4</button>
+      <a class="btn ghost sm" href="../output/embracing-the-wave-a-tale-of-courage/final.mp4" download>⬇ Download final.mp4</a>
+      <span class="muted small">1080×1920 · 0:48 · 12 scenes</span>
       <span class="sp"></span>
-      <button class="btn warn sm">Rebuild video</button>
+      <button class="btn warn sm" disabled style="opacity:.45;cursor:default">Rebuild video</button>
     </div>
+    <p class="note">Plays a real local render from <code>output/</code> (gitignored — present on your machine, not committed).</p>
   </div>
 
   <!-- IMAGES -->
@@ -287,6 +294,41 @@
         <select style="width:auto"><option>(scene voice: default)</option><option>en-GB-RyanNeural</option></select>
         <span class="sp"></span><button class="btn sm">🎙 Re-voice scene</button></div></div>
   </div>
+</section>
+
+<!-- ============ FAILED ============ -->
+<section class="screen" id="fail">
+  <div class="toolbar">
+    <a href="#" onclick="show('home');return false">← Projects</a>
+    <h1 style="margin:0 0 0 8px">Lost Roman Legion</h1>
+    <span class="badge fail">failed</span>
+    <span class="sp"></span>
+    <button class="btn green" onclick="show('gen')">↻ Retry generation</button>
+  </div>
+  <p class="sub">A stage raised an error. The plan is kept — fix the cause and retry; finished scenes are reused.</p>
+
+  <div class="banner" style="background:#331616;border-color:#5e2b2b;color:#f0a3a3">
+    ✗ Image stage failed on scene 7 — <code>DASHSCOPE_API_KEY quota exceeded</code>.
+    <span style="margin-left:auto"></span><button class="btn danger sm" onclick="show('gen')">Retry</button></div>
+
+  <h2>Progress</h2>
+  <div class="log">
+    <div class="ln"><b>plan</b> ✓ shot plan ready · 9 scenes</div>
+    <div class="ln"><b>images</b> ✓ scene 1–6 · qwen-image</div>
+    <div class="ln" style="color:#f06a6a"><b style="color:#f06a6a">images</b> ✗ scene 7 — HTTP 429 quota exceeded</div>
+    <div class="ln muted">images — halted (scenes 8–9 not started)</div>
+    <div class="ln muted">voiceover — not started</div>
+  </div>
+
+  <h2>Scenes</h2>
+  <div class="grid">
+    <div class="tile"><div class="thumb g1">scene 01</div><div class="cap">Scene 01</div></div>
+    <div class="tile"><div class="thumb g2">scene 06</div><div class="cap">Scene 06</div></div>
+    <div class="tile"><div class="thumb g3" style="filter:grayscale(.4)">scene 07<span class="st" style="background:#f06a6a">failed</span></div>
+      <div class="cap">Scene 07<span class="gp"><button class="btn ghost sm">↻ Retry</button></span></div></div>
+    <div class="tile"><div class="thumb gpend">not started<span class="st">pending</span></div><div class="cap">Scene 08</div></div>
+  </div>
+  <p class="note">Per-scene retry re-runs just that image; “Retry generation” resumes the whole pipeline from where it stopped.</p>
 </section>
 
 </main>
