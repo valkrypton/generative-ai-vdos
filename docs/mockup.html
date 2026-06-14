@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Video Studio — UI mockup</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
+    --ink:#e7e9ee; --muted:#9aa3b2; --accent:#6ea8fe; --accent2:#5cd6a4;
+    --warn:#f0a35e; --danger:#f06a6a; --radius:12px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink)}
+  a{color:var(--accent);text-decoration:none}
+  header.top{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:16px;
+       padding:12px 20px;background:#0c0e12;border-bottom:1px solid var(--line)}
+  .brand{font-weight:700;letter-spacing:.2px}
+  .brand small{color:var(--muted);font-weight:400;margin-left:8px}
+  .switch{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+  .switch button{background:var(--panel2);color:var(--muted);border:1px solid var(--line);
+       padding:6px 12px;border-radius:999px;cursor:pointer;font-size:13px}
+  .switch button.active{color:#fff;border-color:var(--accent);background:#22304a}
+  main{max-width:1040px;margin:0 auto;padding:26px 20px 80px}
+  .screen{display:none} .screen.active{display:block}
+  h1{font-size:22px;margin:0 0 4px} h2{font-size:16px;margin:26px 0 12px}
+  .sub{color:var(--muted);margin:0 0 22px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+  .row{display:flex;gap:14px;flex-wrap:wrap}
+  label.fld{display:block;font-size:13px;color:var(--muted);margin:0 0 6px}
+  input[type=text],textarea,select{width:100%;background:var(--panel2);color:var(--ink);
+       border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit}
+  textarea{resize:vertical;min-height:70px}
+  .btn{display:inline-flex;align-items:center;gap:7px;background:var(--accent);color:#0a0d14;
+       border:none;border-radius:8px;padding:9px 16px;font-weight:600;cursor:pointer}
+  .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);font-weight:500}
+  .btn.green{background:var(--accent2)} .btn.warn{background:var(--warn)}
+  .btn.danger{background:transparent;border:1px solid var(--danger);color:var(--danger)}
+  .btn.sm{padding:6px 11px;font-size:13px}
+  .badge{font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .badge.review{color:var(--accent);border-color:#33507e}
+  .badge.gen{color:var(--warn);border-color:#5e472b}
+  .badge.done{color:var(--accent2);border-color:#2c5544}
+  .badge.fail{color:var(--danger);border-color:#5e2b2b}
+  .badge.free{color:var(--accent2);border-color:#2c5544}
+  .badge.paid{color:var(--warn);border-color:#5e472b}
+  .muted{color:var(--muted)} .small{font-size:13px}
+  .list .item{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line);
+       border-radius:10px;margin-top:10px;background:var(--panel2)}
+  .list .item .t{font-weight:600} .list .item .when{margin-left:auto;color:var(--muted);font-size:13px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}
+  .tile{background:var(--panel2);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .thumb{aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;color:#0a0d14;
+       font-weight:700;font-size:13px;position:relative}
+  .thumb .st{position:absolute;top:8px;left:8px;font-size:11px;background:#0009;color:#fff;
+       padding:2px 7px;border-radius:999px}
+  .tile .cap{display:flex;align-items:center;gap:8px;padding:9px 10px;font-size:13px}
+  .tile .cap .gp{margin-left:auto}
+  .stack>*+*{margin-top:14px}
+  .scene{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px}
+  .scene .hd{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .scene .hd .n{font-weight:700;color:var(--muted)}
+  .pill{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 8px}
+  .log{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;background:#0c0e12;
+       border:1px solid var(--line);border-radius:10px;padding:12px;max-height:220px;overflow:auto}
+  .log .ln{color:var(--muted)} .log .ln b{color:var(--accent2);font-weight:600}
+  .banner{display:flex;align-items:center;gap:12px;background:#3a2a16;border:1px solid #5e472b;
+       color:#f4c48f;border-radius:10px;padding:11px 14px;margin-bottom:14px;font-size:14px}
+  .banner.stale{background:#3a2a16}
+  .videobox{aspect-ratio:16/9;background:#000;border:1px solid var(--line);border-radius:10px;
+       display:flex;align-items:center;justify-content:center;color:#fff;position:relative}
+  .videobox .play{width:64px;height:64px;border-radius:50%;background:#ffffff22;border:1px solid #fff6;
+       display:flex;align-items:center;justify-content:center;font-size:24px}
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .toolbar .sp{margin-left:auto}
+  hr{border:none;border-top:1px solid var(--line);margin:24px 0}
+  .note{font-size:12px;color:var(--muted);margin-top:6px}
+  .g1{background:linear-gradient(135deg,#6ea8fe,#9b6efe)}
+  .g2{background:linear-gradient(135deg,#5cd6a4,#3a9bd6)}
+  .g3{background:linear-gradient(135deg,#f0a35e,#f06a6a)}
+  .g4{background:linear-gradient(135deg,#c06efe,#6e8efe)}
+  .g5{background:linear-gradient(135deg,#5cd6a4,#d6cf5c)}
+  .gpend{background:repeating-linear-gradient(45deg,#222733,#222733 10px,#1b1f29 10px,#1b1f29 20px);color:var(--muted)}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">🎬 AI Video Studio <small>local mockup — not wired up</small></div>
+  <nav class="switch" id="switch">
+    <button data-s="home" class="active">Home</button>
+    <button data-s="review">Project · Review</button>
+    <button data-s="gen">Project · Generating</button>
+    <button data-s="done">Project · Done</button>
+  </nav>
+</header>
+<main>
+
+<!-- ============ HOME ============ -->
+<section class="screen active" id="home">
+  <h1>Create a video</h1>
+  <p class="sub">Describe an idea. We'll write a shot plan you can review and refine before anything is generated.</p>
+  <div class="card">
+    <label class="fld">Idea</label>
+    <textarea placeholder="a lonely lighthouse keeper befriends a storm petrel during a winter gale">a lonely lighthouse keeper befriends a storm petrel during a winter gale</textarea>
+    <div class="row" style="margin-top:14px">
+      <div style="flex:1;min-width:180px">
+        <label class="fld">Image backend</label>
+        <select><option>qwen — free</option><option>flux — free tier</option><option>gpt-image-1 — paid</option><option>placeholder</option></select>
+      </div>
+      <div style="flex:1;min-width:180px">
+        <label class="fld">Narrator voice</label>
+        <select><option>en-US-AndrewNeural</option><option>en-GB-RyanNeural</option><option>en-US-AvaNeural</option></select>
+      </div>
+      <div style="flex:1;min-width:180px">
+        <label class="fld">Music mood</label>
+        <select><option>auto (from plan)</option><option>calm</option><option>dramatic</option><option>upbeat</option></select>
+      </div>
+    </div>
+    <div class="row" style="margin-top:14px;align-items:center">
+      <label class="small"><input type="checkbox"> Animate stills</label>
+      <span class="badge paid">spends DashScope credit</span>
+      <span class="sp" style="margin-left:auto"></span>
+      <button class="btn" onclick="show('review')">Create plan →</button>
+    </div>
+    <p class="note">Defaults come from <code>.env</code> — overrides here apply to this project only.</p>
+  </div>
+
+  <h2>Your projects</h2>
+  <div class="list">
+    <div class="item"><span class="g1" style="width:34px;height:34px;border-radius:7px"></span>
+      <span class="t">The Keeper and the Petrel</span><span class="badge review">review</span>
+      <span class="when">just now</span></div>
+    <div class="item"><span class="g3" style="width:34px;height:34px;border-radius:7px"></span>
+      <span class="t">Why Octopuses Have Three Hearts</span><span class="badge done">done</span>
+      <span class="when">2h ago</span></div>
+    <div class="item"><span class="g2" style="width:34px;height:34px;border-radius:7px"></span>
+      <span class="t">The Sharing Berry</span><span class="badge gen">generating</span>
+      <span class="when">yesterday</span></div>
+    <div class="item"><span class="gpend" style="width:34px;height:34px;border-radius:7px"></span>
+      <span class="t">Lost Roman Legion</span><span class="badge fail">failed</span>
+      <span class="when">3 days ago</span></div>
+  </div>
+</section>
+
+<!-- ============ REVIEW ============ -->
+<section class="screen" id="review">
+  <div class="toolbar">
+    <a href="#" onclick="show('home');return false">← Projects</a>
+    <h1 style="margin:0 0 0 8px">The Keeper and the Petrel</h1>
+    <span class="badge review">review</span>
+    <span class="sp"></span>
+    <button class="btn danger sm">Delete</button>
+    <button class="btn green" onclick="show('gen')">Approve &amp; generate →</button>
+  </div>
+  <p class="sub">Revise the plan two ways — type an instruction (AI rewrites it) or edit the fields directly. Nothing is generated until you approve.</p>
+
+  <div class="card" style="margin-bottom:18px">
+    <label class="fld">✨ Refine with an instruction</label>
+    <div class="row">
+      <input type="text" style="flex:1" placeholder="e.g. make the keeper older and add a scene at the harbor"
+             value="make the keeper older and add a scene at the harbor">
+      <button class="btn">Refine</button>
+    </div>
+    <p class="note">Re-runs the LLM (auto-polish + consistency review), same as the CLI's <code>refine --change</code>.</p>
+  </div>
+
+  <h2>Shot plan <span class="pill">editable</span></h2>
+  <div class="card stack">
+    <div class="row">
+      <div style="flex:2;min-width:220px"><label class="fld">Title</label>
+        <input type="text" value="The Keeper and the Petrel"></div>
+      <div style="flex:1;min-width:160px"><label class="fld">Music mood</label>
+        <input type="text" value="calm"></div>
+    </div>
+    <div><label class="fld">Style prefix</label>
+      <input type="text" value="cinematic photo, muted colors, shallow depth of field"></div>
+    <div><label class="fld">Characters</label>
+      <div class="scene"><div class="hd"><span class="n">{keeper}</span></div>
+        <input type="text" value="a weathered man in his 60s, grey beard, thick wool sweater and yellow oilskin coat"></div></div>
+
+    <h2 style="margin-bottom:8px">Scenes <span class="pill">3 of 12 shown</span></h2>
+    <div class="scene"><div class="hd"><span class="n">Scene 01</span><span class="pill">still</span></div>
+      <label class="fld">Narration</label>
+      <textarea>For thirty winters the keeper had tended the light alone.</textarea>
+      <label class="fld" style="margin-top:10px">Image prompt</label>
+      <input type="text" value="{keeper} climbing a spiral stair inside a lighthouse, lantern glow"></div>
+    <div class="scene"><div class="hd"><span class="n">Scene 02</span><span class="pill">animate</span></div>
+      <label class="fld">Narration</label>
+      <textarea>A gale drove a small storm petrel against the glass.</textarea>
+      <label class="fld" style="margin-top:10px">Image prompt</label>
+      <input type="text" value="a tiny storm petrel battered by wind against a lighthouse window at night"></div>
+    <div class="scene"><div class="hd"><span class="n">Scene 03</span><span class="pill">still</span></div>
+      <label class="fld">Narration</label>
+      <textarea>He cupped the trembling bird in his hands.</textarea>
+      <label class="fld" style="margin-top:10px">Image prompt</label>
+      <input type="text" value="{keeper} cupping a small bird in weathered hands, warm interior light"></div>
+  </div>
+</section>
+
+<!-- ============ GENERATING ============ -->
+<section class="screen" id="gen">
+  <div class="toolbar">
+    <a href="#" onclick="show('home');return false">← Projects</a>
+    <h1 style="margin:0 0 0 8px">The Keeper and the Petrel</h1>
+    <span class="badge gen">generating</span>
+  </div>
+  <p class="sub">Images fan out in parallel, then voiceover, then assembly. Progress streams live (SSE).</p>
+
+  <h2>Progress</h2>
+  <div class="log">
+    <div class="ln"><b>plan</b> ✓ shot plan ready · 12 scenes</div>
+    <div class="ln"><b>images</b> ✓ scene 1/12 · qwen-image</div>
+    <div class="ln"><b>images</b> ✓ scene 2/12 · qwen-image</div>
+    <div class="ln"><b>images</b> ✓ scene 3/12 · qwen-image</div>
+    <div class="ln"><b>images</b> … scene 4/12 generating</div>
+    <div class="ln muted">voiceover — waiting for images</div>
+    <div class="ln muted">assemble — waiting</div>
+  </div>
+
+  <h2>Scenes</h2>
+  <div class="grid">
+    <div class="tile"><div class="thumb g1">scene 01<span class="st">done</span></div><div class="cap">Scene 01</div></div>
+    <div class="tile"><div class="thumb g2">scene 02<span class="st">done</span></div><div class="cap">Scene 02</div></div>
+    <div class="tile"><div class="thumb g3">scene 03<span class="st">done</span></div><div class="cap">Scene 03</div></div>
+    <div class="tile"><div class="thumb gpend">generating…<span class="st">running</span></div><div class="cap">Scene 04</div></div>
+    <div class="tile"><div class="thumb gpend">pending<span class="st">pending</span></div><div class="cap">Scene 05</div></div>
+    <div class="tile"><div class="thumb gpend">pending<span class="st">pending</span></div><div class="cap">Scene 06</div></div>
+  </div>
+</section>
+
+<!-- ============ DONE ============ -->
+<section class="screen" id="done">
+  <div class="toolbar">
+    <a href="#" onclick="show('home');return false">← Projects</a>
+    <h1 style="margin:0 0 0 8px">The Keeper and the Petrel</h1>
+    <span class="badge done">done</span>
+  </div>
+  <p class="sub">Tweak any asset and rebuild. Editing images or narration never re-runs the LLM.</p>
+
+  <div class="banner stale">⚠️ An image or voiceover changed since the last build — the video is out of date.
+    <span style="margin-left:auto"></span><button class="btn warn sm">Rebuild video</button></div>
+
+  <!-- VIDEO -->
+  <h2>Video</h2>
+  <div class="card">
+    <div class="videobox"><div class="play">▶</div></div>
+    <div class="toolbar" style="margin-top:12px;margin-bottom:0">
+      <button class="btn ghost sm">⬇ Download final.mp4</button>
+      <span class="sp"></span>
+      <button class="btn warn sm">Rebuild video</button>
+    </div>
+  </div>
+
+  <!-- IMAGES -->
+  <h2>Images</h2>
+  <div class="toolbar">
+    <span class="muted small">12 scenes</span>
+    <span class="sp"></span>
+    <select style="width:auto"><option>qwen — free</option><option>gpt-image-1 — paid</option></select>
+    <button class="btn ghost sm">↻ Regenerate all images</button>
+  </div>
+  <div class="grid">
+    <div class="tile"><div class="thumb g1">scene 01</div><div class="cap">Scene 01<span class="gp"><button class="btn ghost sm">↻ Regenerate</button></span></div></div>
+    <div class="tile"><div class="thumb g2">scene 02</div><div class="cap">Scene 02<span class="gp"><button class="btn ghost sm">↻ Regenerate</button></span></div></div>
+    <div class="tile"><div class="thumb g3">scene 03</div><div class="cap">Scene 03<span class="gp"><button class="btn ghost sm">↻ Regenerate</button></span></div></div>
+    <div class="tile"><div class="thumb g4">scene 04</div><div class="cap">Scene 04<span class="gp"><button class="btn ghost sm">↻ Regenerate</button></span></div></div>
+  </div>
+
+  <!-- VOICEOVER -->
+  <h2>Voiceover</h2>
+  <div class="toolbar">
+    <span class="muted small">edit narration, then re-voice the scene</span>
+    <span class="sp"></span>
+    <select style="width:auto"><option>en-US-AndrewNeural</option><option>en-GB-RyanNeural</option></select>
+    <button class="btn ghost sm">↻ Regenerate all voiceovers</button>
+  </div>
+  <div class="stack">
+    <div class="scene"><div class="hd"><span class="n">Scene 01</span><span class="pill">🔊 4.2s</span></div>
+      <textarea>For thirty winters the keeper had tended the light alone.</textarea>
+      <div class="toolbar" style="margin:10px 0 0">
+        <select style="width:auto"><option>(scene voice: default)</option><option>en-GB-RyanNeural</option></select>
+        <span class="sp"></span><button class="btn sm">🎙 Re-voice scene</button></div></div>
+    <div class="scene"><div class="hd"><span class="n">Scene 02</span><span class="pill">🔊 3.1s</span></div>
+      <textarea>A gale drove a small storm petrel against the glass.</textarea>
+      <div class="toolbar" style="margin:10px 0 0">
+        <select style="width:auto"><option>(scene voice: default)</option><option>en-GB-RyanNeural</option></select>
+        <span class="sp"></span><button class="btn sm">🎙 Re-voice scene</button></div></div>
+  </div>
+</section>
+
+</main>
+<script>
+  const screens=[...document.querySelectorAll('.screen')];
+  const btns=[...document.querySelectorAll('#switch button')];
+  function show(id){
+    screens.forEach(s=>s.classList.toggle('active',s.id===id));
+    btns.forEach(b=>b.classList.toggle('active',b.dataset.s===id));
+    window.scrollTo(0,0);
+  }
+  document.getElementById('switch').addEventListener('click',e=>{
+    if(e.target.dataset.s) show(e.target.dataset.s);
+  });
+</script>
+</body>
+</html>
