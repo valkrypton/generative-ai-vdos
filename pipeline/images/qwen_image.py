@@ -18,17 +18,30 @@ from ..env import dashscope_base_url
 from .base import ImageProvider
 from .util import fit_cover
 
-DEFAULT_MODEL = "qwen-image"  # free new-user quota; the premium tier bills
-EDIT_MODEL = "qwen-image-edit"  # reference-image editing: same look in a new scene
 SIZE = "1664*928"  # native 16:9; fit_cover upscales to 1920x1080
-MAX_PROMPT = 1500  # qwen-image accepts well beyond this; warn before cutting
+MAX_PROMPT = 1500  # warn before cutting; most models accept well beyond this
+MAX_REFS = 3  # cap on reference images sent per edit
 
 
 def _gen_model() -> str:
-    """Text-to-image model. Free `qwen-image` by default; opt into the paid
-    `qwen-image-plus` (or any other) ONLY by setting QWEN_IMAGE_MODEL in .env.
+    """Text-to-image model id — from .env (QWEN_IMAGE_MODEL). No hardcoded
+    default: the code is model-agnostic, so the id must be set explicitly.
     Read at call time because .env loads after this module is imported."""
-    return os.environ.get("QWEN_IMAGE_MODEL", DEFAULT_MODEL)
+    model = os.environ.get("QWEN_IMAGE_MODEL", "").strip()
+    if not model:
+        raise RuntimeError("no image model set — put QWEN_IMAGE_MODEL in .env")
+    return model
+
+
+def _edit_model() -> str:
+    """Reference-edit model id — from .env (QWEN_EDIT_MODEL), falling back to
+    QWEN_IMAGE_MODEL when the same model does both jobs."""
+    model = (os.environ.get("QWEN_EDIT_MODEL", "").strip()
+             or os.environ.get("QWEN_IMAGE_MODEL", "").strip())
+    if not model:
+        raise RuntimeError(
+            "no edit model set — put QWEN_EDIT_MODEL (or QWEN_IMAGE_MODEL) in .env")
+    return model
 
 
 class QwenImageProvider(ImageProvider):
@@ -79,11 +92,16 @@ class QwenImageProvider(ImageProvider):
                                 + (f", {negative}" if negative else "")),
         })
 
-    def edit(self, prompt: str, reference: Path, path: Path) -> None:
-        """Re-render the reference image to match prompt, keeping the subject's
-        look (face, hair, clothing) — qwen-image-edit, free on the same quota."""
-        data_uri = "data:image/png;base64," + base64.b64encode(reference.read_bytes()).decode()
-        self._post(EDIT_MODEL, [{"image": data_uri}, {"text": prompt[:MAX_PROMPT]}], path, {
+    def edit(self, prompt: str, reference, path: Path) -> None:
+        """Re-render to match prompt while keeping the subject(s) looking the same
+        (face, hair, clothing). `reference` is a single Path or a list of Paths
+        (up to 3, for multi-character scenes). Free on the qwen-image-2.0 quota."""
+        refs = list(reference) if isinstance(reference, (list, tuple)) else [reference]
+        content = [{"image": "data:image/png;base64,"
+                    + base64.b64encode(Path(r).read_bytes()).decode()}
+                   for r in refs[:MAX_REFS]]
+        content.append({"text": prompt[:MAX_PROMPT]})
+        self._post(_edit_model(), content, path, {
             "n": 1,
             "prompt_extend": False,
             "watermark": False,

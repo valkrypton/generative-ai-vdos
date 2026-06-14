@@ -1,4 +1,5 @@
-"""OpenAI gpt-image-1 (~$0.01-0.02/image at low quality). Needs OPENAI_API_KEY."""
+"""OpenAI image backend (~$0.01-0.02/image at low quality). Needs OPENAI_API_KEY
+and the model id in .env (OPENAI_IMAGE_MODEL) — no model is hardcoded."""
 import base64
 import io
 import os
@@ -9,6 +10,14 @@ from PIL import Image
 
 from .base import ImageProvider
 from .util import fit_cover
+
+
+def _model() -> str:
+    """Image model id — from .env (OPENAI_IMAGE_MODEL). No hardcoded default."""
+    model = os.environ.get("OPENAI_IMAGE_MODEL", "").strip()
+    if not model:
+        raise RuntimeError("no OpenAI image model set — put OPENAI_IMAGE_MODEL in .env")
+    return model
 
 
 class GptImageProvider(ImageProvider):
@@ -22,25 +31,33 @@ class GptImageProvider(ImageProvider):
                  negative: Optional[str] = None) -> None:
         from openai import OpenAI
 
-        # gpt-image-1 has no negative_prompt param, but it follows instructions
-        # well — fold negatives into the prompt as an explicit "do not include".
+        # No negative_prompt param here, but the model follows instructions well
+        # — fold negatives into the prompt as an explicit "do not include".
         if negative:
             prompt = f"{prompt}. Do not include: {negative}."
         client = OpenAI()
         result = client.images.generate(
-            model="gpt-image-1", prompt=prompt, size="1536x1024", quality="low", n=1,
+            model=_model(), prompt=prompt, size="1536x1024", quality="low", n=1,
         )
         img = Image.open(io.BytesIO(base64.b64decode(result.data[0].b64_json))).convert("RGB")
         fit_cover(img).save(path)
 
-    def edit(self, prompt: str, reference: Path, path: Path) -> None:
-        """Build the scene on top of a reference photo (real building, person, ...)."""
+    def edit(self, prompt: str, reference, path: Path) -> None:
+        """Build the scene on top of one or more reference images. `reference` is
+        a single Path or a list of Paths."""
         from openai import OpenAI
 
+        refs = list(reference) if isinstance(reference, (list, tuple)) else [reference]
         client = OpenAI()
-        with open(reference, "rb") as f:
+        handles = [open(Path(r), "rb") for r in refs]
+        try:
             result = client.images.edit(
-                model="gpt-image-1", image=f, prompt=prompt, size="1536x1024", n=1,
+                model=_model(),
+                image=handles if len(handles) > 1 else handles[0],
+                prompt=prompt, size="1536x1024", n=1,
             )
+        finally:
+            for h in handles:
+                h.close()
         img = Image.open(io.BytesIO(base64.b64decode(result.data[0].b64_json))).convert("RGB")
         fit_cover(img).save(path)

@@ -498,9 +498,10 @@ These were open; now settled (explicit by preference — no defaults left implic
 |---|----------|
 | D1 | **Plan JSON is the single source of truth.** `Scene` rows hold image state only, (re)built from `shot_plan` on approve (§4). |
 | D2 | **Progress uses SSE**, not WebSockets — one-way, simpler, no extra deps. |
-| D3 | **`.env` is the source of truth for providers/credentials.** The UI overrides only per-project, and only `image_backend`, `animate`, `voice`, `music`. |
+| D3 | **`.env` is the default source of truth for providers/credentials.** The UI overrides per-project: `image_backend`, `animate`, `voice`, `music`, **and (per §14) the LLM + image model chosen from the user's own model registry**. `.env` remains the fallback when no per-user model is selected. |
 | D4 | **One Celery worker, default concurrency.** Image tasks fan out via the chord's `group`; if a free-tier backend (Qwen) rate-limits, lower worker concurrency rather than adding backpressure logic. |
 | D5 | **Music: plan-driven mood first.** Reuse `music/` + its CC-BY attribution; a file picker comes later. |
+| D6 | **Users bring their own models + API keys** (per §14), chosen over an admin-defined shared registry. Larger scope (encrypted key storage, per-request routing) — scheduled **Sprint 2+**, not the initial MVP slice. |
 
 ---
 
@@ -732,3 +733,114 @@ the other epics build on. Jawad floats across all three.
 - **Tests & edge cases:** cap enforced (3rd scene rejected); animation disabled path is the
   default; never enabled implicitly.
 - **Review focus:** money rules (DashScope credit) — the highest-risk item; explicit opt-in only.
+
+---
+
+## 14. User-defined models & credentials (BYO-key) — *Sprint 2+*
+
+Each user registers their **own** LLM + image models and their **own** API keys; their
+projects run on the models they chose, billed to their keys. This extends D3 (env was the
+only credential source) and is a deliberate step toward the SaaS vision in `webapp-spec.md`.
+**Scope warning:** this is larger and more security-sensitive than the rest of the MVP —
+hence D6 schedules it for Sprint 2+, after the foundation + auth + engine slice land.
+
+The engine already supports per-call model selection (`script_agent` takes `model=`;
+routing is by prefix — `gpt-*`→OpenAI, `claude-*`→Anthropic, else→LiteLLM proxy; image
+backends are plugins). The new work is **persistence (encrypted keys), per-request routing
+of credentials, and UI** — not new generation logic.
+
+### 14.1 Data models (per user, extend §4)
+
+**UserCredential** — a provider API key the user owns.
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | int (pk) | |
+| `owner` | FK → UserProfile, indexed | Every query filtered by signed-in user. |
+| `provider` | char (enum: openai/anthropic/litellm/dashscope/…) | Routes to the right SDK/endpoint. |
+| `label` | char | User-facing name ("my OpenAI key"). |
+| `key_encrypted` | bytes | **Encrypted at rest** (Fernet/KMS). Never stored plaintext. |
+| `created_at` | datetime | |
+
+**UserModel** — a model the user can pick for a project.
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | int (pk) | |
+| `owner` | FK → UserProfile, indexed | |
+| `kind` | char (enum: `llm` / `image`) | Which dropdown it appears in. |
+| `label` | char | Display name. |
+| `model_id` | char | e.g. `gpt-4o-mini`, `claude-haiku-4-5`, an image backend id. |
+| `credential` | FK → UserCredential, null | null → use the server's `.env` key (shared default). |
+| `costs_money` | bool | Drives the UI cost warning + explicit opt-in. |
+| `is_default` | bool | The user's default for that `kind`. |
+
+**Project** gains `llm_model` and `image_model` (FK → UserModel, **nullable**). Null falls
+back to the `.env` defaults (existing behaviour), so projects keep working with no registry.
+
+### 14.2 API (extends §5)
+
+- `GET/POST/PATCH/DELETE /api/credentials/` — manage the caller's keys. **Responses never
+  include the key**; writes are accept-only (no read-back), UI shows masked `••••1234`.
+- `GET/POST/PATCH/DELETE /api/models/` — manage the caller's `UserModel` registry.
+- `POST /api/projects/` and `/refine/` accept optional `llm_model` / `image_model` ids,
+  validated to belong to the caller (else 404, per §4a).
+
+### 14.3 Routing
+
+The Celery worker resolves `(model_id, decrypted key, endpoint)` **at call time** and passes
+them into `script_agent` / the image provider per request — never via global env mutation
+(workers are shared across users). Decryption happens only inside the worker process.
+
+### 14.4 Security (non-negotiable)
+
+- **Keys encrypted at rest**; the encryption key comes from env/KMS and is **never** in the
+  repo (the pre-commit hook still guards commits).
+- **API never returns raw keys**; UI input is masked and update-only.
+- **Keys never reach `JobLog`, SSE, or any log**; provider error messages are redacted before
+  persistence.
+- **Per-user isolation** (§4a) covers credentials + models — cross-user access returns 404.
+
+### 14.5 Money rules
+
+- BYO-key means **the user pays for their own usage** — but `costs_money` models still warn
+  in the UI before selection.
+- Shared/default models (no credential FK) keep the existing rules: qwen / gpt-4o-mini
+  default; gpt-image-1 explicit-only; animation off by default.
+
+### 14.6 AI-first work items (BYO-key — Sprint 2+)
+
+**A7. Per-user credential vault (encrypted at rest)** · *Epic A · Zahid*
+- **Contract:** `UserCredential` model + `/api/credentials/` CRUD; keys encrypted (Fernet/KMS)
+  on write, decrypted only in the worker; API/UI never expose plaintext.
+- **Acceptance criteria:** a stored key round-trips through a real provider call; `GET` returns
+  only masked metadata; rotating a key re-encrypts; deleting cascades to dependent `UserModel`s.
+- **Tests & edge cases:** key never appears in any response/log/JobLog; cross-user access → 404;
+  missing encryption key → startup error, not plaintext fallback.
+- **Review focus:** secret handling, encryption at rest, isolation — the highest-risk item.
+
+**A8. Model registry CRUD (`UserModel`)** · *Epic A · Zahid*
+- **Contract:** `UserModel` model + `/api/models/` CRUD; `kind` ∈ {llm,image}; optional
+  `credential` FK; `costs_money` + `is_default` flags.
+- **Acceptance criteria:** a user can register/list/edit/delete models; defaults resolve per
+  kind; a model with no credential falls back to `.env`.
+- **Tests & edge cases:** invalid `model_id` rejected; cross-user 404; deleting a credential
+  nulls or blocks its models predictably.
+- **Review focus:** validation, data integrity, fallback-to-env correctness.
+
+**C7. Per-request model + credential routing** · *Epic C · Laraib*
+- **Contract:** `run_plan_stage`/`run_refine_stage`/`run_image_stage` accept a resolved
+  `(model_id, key, endpoint)` and pass it through; no global env mutation per request.
+- **Acceptance criteria:** two concurrent projects using different users' models/keys never
+  cross-contaminate; null model → `.env` default path unchanged.
+- **Tests & edge cases:** concurrent requests isolate credentials; bad key → FAILED + redacted
+  error (no key leak); prefix routing (gpt-*/claude-*/else) honored.
+- **Review focus:** concurrency isolation, no key leakage, backward-compatible default path.
+
+**B6. Settings UI — manage models & keys + per-project selection** · *Epic B · Ali Tariq*
+- **Contract:** a Settings area to add/edit/delete credentials (masked input) and models;
+  the project create/refine screens show LLM + image dropdowns populated from the user's registry.
+- **Acceptance criteria:** keys shown masked, never pre-filled; `costs_money` models show a
+  warning before selection; selecting a model persists to the project; empty registry falls back
+  to `.env` defaults silently.
+- **Tests & edge cases:** masked key never in DOM/source; cost warning required before a paid
+  model is chosen; dropdowns scoped to the signed-in user.
+- **Review focus:** no client-side key exposure; money-rule warnings; isolation.

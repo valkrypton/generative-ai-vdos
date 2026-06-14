@@ -1,4 +1,6 @@
-"""Flux Schnell via Replicate (~$0.003/image). Needs REPLICATE_API_TOKEN + replicate package."""
+"""Replicate image backend (~$0.003/image for Flux Schnell). Needs
+REPLICATE_API_TOKEN, the replicate package, and the model id in .env
+(REPLICATE_IMAGE_MODEL) — no model is hardcoded."""
 import os
 import urllib.request
 from pathlib import Path
@@ -24,8 +26,12 @@ class FluxProvider(ImageProvider):
                  negative: Optional[str] = None) -> None:
         import replicate
 
+        model = os.environ.get("REPLICATE_IMAGE_MODEL", "").strip()
+        if not model:
+            raise RuntimeError(
+                "no Replicate image model set — put REPLICATE_IMAGE_MODEL in .env")
         output = replicate.run(
-            "black-forest-labs/flux-schnell",
+            model,
             input={"prompt": prompt, "aspect_ratio": "16:9", "output_format": "png"},
         )
         url = str(output[0]) if isinstance(output, list) else str(output)

@@ -8,3 +8,10 @@ edge-tts>=6.1
 pillow>=10.0
 # Optional — only needed for Flux image generation via Replicate:
 # replicate>=0.32
+
+# Optional — only needed for the local face-swap stage (pipeline.faceswap),
+# which locks one face across all scenes for free (no API call). Runs on
+# CPU / CoreML on macOS; needs the inswapper_128.onnx model downloaded once.
+# insightface>=0.7
+# onnxruntime>=1.16
+# opencv-python-headless>=4.8
