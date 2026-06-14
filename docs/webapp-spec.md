@@ -516,6 +516,58 @@ s3://ai-video-pipeline/
 
 All files served via CloudFront CDN. Presigned URLs for download links (expire 1h).
 
+### Storage access control — disable ACLs, use a bucket policy
+
+**Do not use S3 ACLs.** AWS recommends ACLs disabled for all new buckets; use a
+bucket policy + IAM instead. Concretely:
+
+- **Object Ownership: `BucketOwnerEnforced`** — this *disables ACLs* entirely. Every
+  object is owned by the bucket owner; `x-amz-acl` / per-object grants are rejected.
+- **Block Public Access: all four ON** — the bucket is never public. Browsers reach
+  assets only through CloudFront (OAC) or a presigned URL, never a raw S3 URL.
+- **CloudFront Origin Access Control (OAC)** — the only principal allowed to `GetObject`
+  is the CloudFront distribution; direct S3 reads are denied.
+- **Presigned URLs** for `final.mp4` downloads (expire 1h), generated server-side after
+  the row-level `owner=request.user` check (§9). No object is world-readable.
+
+Bucket policy (OAC read + TLS-only; note there is **no** `PutObjectAcl`/ACL grant —
+uploads from Celery use the app's IAM role, not ACLs):
+
+```jsonc
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowCloudFrontOACRead",
+      "Effect": "Allow",
+      "Principal": { "Service": "cloudfront.amazonaws.com" },
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::ai-video-pipeline/*",
+      "Condition": {
+        "StringEquals": {
+          "AWS:SourceArn": "arn:aws:cloudfront::<acct-id>:distribution/<dist-id>"
+        }
+      }
+    },
+    {
+      "Sid": "DenyInsecureTransport",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::ai-video-pipeline",
+        "arn:aws:s3:::ai-video-pipeline/*"
+      ],
+      "Condition": { "Bool": { "aws:SecureTransport": "false" } }
+    }
+  ]
+}
+```
+
+The Celery worker writes via its task-role IAM permissions (`s3:PutObject` on
+`ai-video-pipeline/users/${aws:username}/*`-style scoping), so no object ACLs are ever
+set — consistent with `BucketOwnerEnforced`.
+
 ---
 
 ## 9. Auth & Multi-tenancy
