@@ -14,10 +14,14 @@ here is captured in §10.
 
 **In:**
 - Submit an idea → get a shot plan (auto-polish + consistency review run automatically, same as the CLI).
-- Review/edit the plan in the browser, then approve.
+- Review the plan in the browser and revise it **two ways**: (a) edit the plan fields
+  directly, or (b) type a natural-language **refine instruction** ("make the mom
+  younger", "add a scene at the harbor") that re-runs the LLM — the CLI's
+  `refine --change`. Then approve.
 - Generate assets (images → voiceover → FFmpeg assembly) with live progress.
+- See **all scene images** in a gallery; **regenerate any single image, or all of
+  them**, without redoing the rest of the pipeline.
 - Watch/download the finished `final.mp4`.
-- Regenerate a single scene's image.
 - List past projects; open any to review or re-download.
 
 **Out (for the MVP):**
@@ -97,6 +101,7 @@ No `User`. Three tables.
 | `narrator_voice`| char, blank                | edge-tts voice; default from `.env`. |
 | `music`        | char, blank                 | Optional music file/mood. |
 | `error`        | text, blank                 | Last failure message if `status=FAILED`. |
+| `stale`        | bool, default False         | An image/voiceover changed since the last assemble — `final.mp4` is out of date until `reassemble/`. |
 | `created_at` / `updated_at` | datetime       | |
 
 ### Scene
@@ -142,6 +147,7 @@ the plan. This avoids a dual source of truth between the JSON and the rows.
 │  narrator_voice char       │
 │  music         char        │
 │  error         text        │
+│  stale         bool        │         ← final.mp4 out of date vs current assets
 │  created_at    datetime    │
 │  updated_at    datetime    │
 └────────────┬───────────────┘
@@ -185,10 +191,15 @@ DRF, JSON, no auth. Base path `/api/`.
 | `POST` | `/api/projects/` | Create a project from `{prompt, image_backend?, animate?, voice?}`; enqueues the plan task → `PLANNING`. |
 | `GET`  | `/api/projects/` | List projects (id, title, status, created_at). |
 | `GET`  | `/api/projects/{id}/` | Detail: project + scenes + recent JobLog. |
-| `PATCH`| `/api/projects/{id}/` | Edit `shot_plan` (allowed only while `REVIEW`). |
+| `PATCH`| `/api/projects/{id}/` | Manually edit `shot_plan` (allowed only while `REVIEW`). |
+| `POST` | `/api/projects/{id}/refine/` | Revise the plan via a natural-language instruction (LLM re-run); `REVIEW` only. |
 | `DELETE`| `/api/projects/{id}/` | Delete row + `output/<id>/` folder. |
 | `POST` | `/api/projects/{id}/approve/` | Approve the plan; enqueues the assets pipeline → `GENERATING`. |
 | `POST` | `/api/projects/{id}/scenes/{index}/regenerate/` | Re-run one scene's image. |
+| `POST` | `/api/projects/{id}/regenerate-images/` | Re-run **all** scene images. |
+| `POST` | `/api/projects/{id}/scenes/{index}/revoice/` | Edit one scene's narration/voice and re-run its TTS. |
+| `POST` | `/api/projects/{id}/regenerate-voiceovers/` | Re-run **all** scene voiceovers. |
+| `POST` | `/api/projects/{id}/reassemble/` | Re-stitch `final.mp4` from current assets (clears `stale`). |
 | `GET`  | `/api/projects/{id}/events/` | **SSE** stream of progress events. |
 | `GET`  | `/api/projects/{id}/download/` | Serve `output/<id>/final.mp4`. |
 
@@ -235,6 +246,20 @@ Before approve, `scenes` is `[]` (no rows yet — D1); the plan is read from `sh
 `{ "shot_plan": { … }, "image_backend": "openai", "animate": true }`. Editing in any
 other status → `409 Conflict`. Returns the updated detail object.
 
+**`POST /api/projects/{id}/refine/`** — revise the plan with a natural-language
+instruction. Wraps `script_agent.revise_shot_plan(plan, feedback)`. `REVIEW` only
+(else `409`); enqueues `run_refine_stage` → status briefly `PLANNING`, back to
+`REVIEW` with the updated `shot_plan`. Auto-polish + consistency review re-run, same
+as a fresh plan.
+```jsonc
+// request
+{ "instruction": "make the lighthouse keeper older and add a scene at the harbor" }
+// 202
+{ "status": "PLANNING" }
+```
+This is the LLM path; `PATCH` is the manual path. Both edit the same `shot_plan` and
+are available throughout `REVIEW`.
+
 **`POST /api/projects/{id}/approve/`** — no body. Builds `Scene` rows from the final
 plan, enqueues the assets chord, → `GENERATING`. `202` with `{ "status": "GENERATING" }`.
 Calling it from `REVIEW` or `FAILED` is valid (the latter is retry); any other
@@ -244,6 +269,34 @@ status → `409`.
 `{ "image_backend": "gpt-image-1" }` to force a backend for this scene only (explicit
 opt-in to the paid backend). `202`; the scene's `image_status` returns to `RUNNING`
 and progress streams over SSE. Allowed in `REVIEW` and `DONE`.
+
+**`POST /api/projects/{id}/regenerate-images/`** — re-run **all** scene images at once.
+Optional `{ "image_backend": "…" }` applies to every scene. Resets each scene's
+`image_status` to `PENDING` and enqueues the image `group` only — voiceover is
+untouched. `202`. Allowed in `DONE`/`FAILED`. Regenerating an image changes a source
+asset, so it sets `stale=true`; `final.mp4` is unchanged until **`reassemble/`**.
+
+**`POST /api/projects/{id}/scenes/{index}/revoice/`** — edit one scene's narration
+and/or voice, then re-run its TTS. Updates `shot_plan["scenes"][index]` and re-runs
+edge-tts for that scene only (regenerating the mp3 + word-timing json).
+```jsonc
+// request (both optional; omit narration to just change the voice)
+{ "narration": "The keeper had not spoken to a soul in years.",
+  "voice": "en-GB-RyanNeural" }
+// 202
+{ "status": "DONE", "stale": true }
+```
+Allowed in `DONE`/`FAILED`. Sets `stale=true` (scene durations come from the new
+audio, so the video must be re-stitched). Editing narration *before* generation is
+just a `PATCH` to the plan in `REVIEW` — no audio exists yet.
+
+**`POST /api/projects/{id}/regenerate-voiceovers/`** — re-run **all** voiceovers.
+Optional `{ "voice": "…" }` sets the narrator voice for every scene. `202`; sets
+`stale=true`. Allowed in `DONE`/`FAILED`.
+
+**`POST /api/projects/{id}/reassemble/`** — re-run only the FFmpeg assembly from the
+current images + audio; refreshes `final.mp4` and clears `stale`. No body. `202`.
+Allowed in `DONE`/`FAILED`.
 
 **`GET /api/projects/{id}/events/`** — `text/event-stream`. Each event:
 ```
@@ -265,14 +318,22 @@ Each task wraps an existing pipeline function and publishes progress.
 | Task | Wraps | Emits |
 |------|-------|-------|
 | `run_plan_stage(project_id)` | `script_agent` (plan + auto-polish + consistency review) | `PLANNING` log lines; saves `shot_plan`; → `REVIEW`. |
+| `run_refine_stage(project_id, instruction)` | `script_agent.revise_shot_plan(plan, instruction)` (+ re-run polish/review) | saves the revised `shot_plan`; → `REVIEW`. |
 | `run_image_stage(project_id, scene_index)` | `pipeline.images.get_provider(...).generate(...)` | per-scene status; honors character refs / negatives via `ShotPlan.expand()`. |
-| `run_voice_stage(project_id)` | `pipeline.voiceover` | edge-tts per scene + word timings. |
-| `run_assemble_stage(project_id)` | `pipeline.assemble` | FFmpeg assembly → `final.mp4`; → `DONE`. |
+| `run_voice_stage(project_id, scene_index=None)` | `pipeline.voiceover` | edge-tts + word timings; one scene when `scene_index` is set, else all. |
+| `run_assemble_stage(project_id)` | `pipeline.assemble` | FFmpeg assembly → `final.mp4`; clears `stale`; → `DONE`. |
 
 **Assets pipeline** (on approve): a Celery **chord** —
 `group(run_image_stage for each scene) | run_voice_stage | run_assemble_stage`.
 Images fan out in parallel; voice and assembly run once all images land.
 (Animation, if enabled, inserts a capped video stage between images and voice — §7.)
+
+**Regenerate / revoice / reassemble** reuse these same tasks with no chord tail:
+one image → a single `run_image_stage`; all images → `group(run_image_stage …)`;
+one/all voiceovers → `run_voice_stage(scene_index=…)` / `run_voice_stage()`;
+re-stitch → `run_assemble_stage`. Each asset-changing task sets `stale=true`;
+`run_assemble_stage` clears it. Iterating on visuals or audio never re-runs the LLM,
+so it's cheap; the operator rebuilds the video once when satisfied.
 
 All tasks wrap the body in try/except: on failure set `status=FAILED`, write an
 error `JobLog`, publish a terminal SSE event. Scene durations come from measuring
@@ -313,12 +374,23 @@ Two pages, Django templates + vanilla JS. No framework.
    credit warning, voice) → POST creates a project and redirects to its page. Below,
    a list of past projects with status badges.
 2. **Project** (`/projects/{id}/`):
-   - **REVIEW:** editable view of the shot plan (title, scenes, characters,
-     negatives) with Approve / Edit / Delete. Per-scene image thumbnails once
-     generated, each with a Regenerate button.
-   - **GENERATING:** live progress log (SSE) + per-scene status.
-   - **DONE:** embedded `<video>` + Download button.
-   - **FAILED:** the error + a Retry affordance.
+   - **REVIEW** — the shot plan, revised two ways side by side, plus Approve / Delete:
+     - **Refine box** — a text input + "Refine" button that POSTs an instruction to
+       `/refine/` (the LLM path); spinner while `PLANNING`, updated plan via SSE.
+     - **Manual edit** — inline-editable plan fields that PATCH `shot_plan` directly.
+   - **GENERATING** — live progress log (SSE); the image gallery fills in as each scene
+     lands (tile status PENDING → RUNNING → DONE).
+   - **DONE / FAILED** — three editable panels over the generated assets, each using the
+     same edit-then-regenerate pattern:
+     - **Images** — grid of all scene images; per-image **Regenerate** + a
+       **Regenerate all images** button.
+     - **Voiceover** — per scene, the editable **narration** text and an optional voice
+       override, with a **Re-voice** button; plus **Regenerate all voiceovers**. Editing
+       narration here updates `shot_plan` and re-runs only that scene's TTS.
+     - **Video** — embedded `<video>` + Download. A **Rebuild video** button,
+       highlighted when assets are **stale** (an image or voiceover changed since the
+       last assemble), re-stitches `final.mp4` from the current assets.
+     Failed tiles show the error inline with a retry.
 
 ---
 
