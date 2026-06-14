@@ -1,18 +1,25 @@
-# Web App — Lean Local MVP Spec
+# Web App — Lean MVP Spec
 
-A thin web UI over the existing CLI pipeline. **Single-user, local-only.** No auth,
-no billing, no cloud. The goal is to drive the same prompt → plan → review → generate
-flow from a browser instead of the terminal, with live progress.
+A thin web UI over the existing CLI pipeline. **Multi-user (AWS Cognito auth),
+local media, no billing.** The goal is to drive the same prompt → plan → review →
+generate flow from a browser instead of the terminal, with live progress — with each
+user seeing only their own projects.
 
-This supersedes `webapp-spec.md` (the full multi-tenant SaaS vision) **for what we
-build first**. That doc stays as the north star / upgrade path; everything deferred
-here is captured in §10.
+This supersedes `webapp-spec.md` (the full SaaS vision: Next.js, S3/CloudFront, RDS,
+Stripe) **for what we build first**. That doc stays as the north star / upgrade path;
+everything deferred here is captured in §10.
+
+> **Decision log:** auth was initially out of scope ("single-user, no auth"), then
+> changed to **multi-user accounts via AWS Cognito**. Media still lives on local disk
+> (S3 deferred); billing still deferred.
 
 ---
 
 ## 1. Scope
 
 **In:**
+- **Sign up / log in via AWS Cognito** (email+password and Google); each user sees and
+  manages only their own projects.
 - Submit an idea → get a shot plan (auto-polish + consistency review run automatically, same as the CLI).
 - Review the plan in the browser and revise it **two ways**: (a) edit the plan fields
   directly, or (b) type a natural-language **refine instruction** ("make the mom
@@ -25,15 +32,16 @@ here is captured in §10.
 - List past projects; open any to review or re-download.
 
 **Out (for the MVP):**
-- No users, login, accounts, or permissions — one local operator.
 - No billing/Stripe/quotas.
-- No cloud (AWS/S3/CloudFront/RDS). Files live on local disk.
+- No media in the cloud — `final.mp4`, images, audio stay on **local disk** (S3/CloudFront
+  deferred). Auth is the one cloud dependency (AWS Cognito).
 - No Next.js/React build step — server-rendered Django templates + vanilla JS.
 - Animation stays **off by default** (spends DashScope credit; opt-in only — see §7).
 
-**Success criteria:** from a clean checkout, a developer can run three processes
-(Redis, Celery worker, Django) and produce the same `output/<id>/final.mp4` the CLI
-produces — driven entirely from the browser, with progress streamed live.
+**Success criteria:** from a clean checkout (plus a configured Cognito user pool), a
+developer can run three processes (Redis, Celery worker, Django), sign in, and produce
+the same `output/<owner>/<id>/final.mp4` the CLI produces — driven entirely from the browser,
+with progress streamed live, isolated to the signed-in user.
 
 ---
 
@@ -43,14 +51,16 @@ produces — driven entirely from the browser, with progress streamed live.
 |--------------|-----------------------------------------|-------|
 | Language     | **Python 3.10+** (3.12 available locally) | Django 5.2 needs ≥3.10. The `pipeline/` package itself stays 3.9-compatible. |
 | Web          | **Django 5.2** + **Django REST Framework** | Server-rendered templates for pages; DRF for the JSON API the JS calls. |
+| Auth         | **AWS Cognito** user pool               | Hosted UI / OAuth2; Django validates Cognito JWTs (JWKS). See §4a. |
 | Async jobs   | **Celery 5.4** + **Redis**              | Redis is broker + result backend + SSE pub/sub. |
-| DB           | **SQLite**                              | Single file, zero setup. Fine for one operator. |
+| DB           | **SQLite**                              | Single file, zero setup. Holds projects + a thin user-profile row keyed by Cognito `sub`. |
 | Frontend     | Django templates + vanilla JS (`fetch` + `EventSource`) | No npm, no bundler. |
-| Media        | Local filesystem, served by Django (dev) | Reuses the pipeline's `output/<id>/` layout. |
+| Media        | Local filesystem, served by Django (dev) | Reuses the pipeline's `output/<owner>/<id>/` layout. |
 | System dep   | `ffmpeg-full` (libass), edge-tts        | Same as the CLI today. |
 
 **Dependencies** (a `requirements-web.txt`, created when we build — not now):
 `Django>=5.2,<5.3`, `djangorestframework>=3.15`, `celery>=5.4`, `redis>=5.0`,
+`python-jose[cryptography]` (verify Cognito JWTs) or `mozilla-django-oidc`,
 plus the existing `pipeline/` requirements.
 
 Runs in a separate **Python 3.12 venv** (`.venv-web`) so the repo's 3.9 `.venv`
@@ -61,16 +71,18 @@ Runs in a separate **Python 3.12 venv** (`.venv-web`) so the repo's 3.9 `.venv`
 ## 3. Architecture
 
 ```
+                  AWS Cognito (user pool, Hosted UI)
+                        ▲ OAuth code ▼ JWT
 Browser ──fetch──▶ Django (DRF views) ──enqueue──▶ Redis ──▶ Celery worker
    ▲                     │                                        │
    │                     │ reads/writes                           │ calls pipeline/ functions
    └──EventSource(SSE)───┤                                        ▼
-        progress         └── SQLite (Project/Scene/JobLog) ◀── output/<id>/ on disk
-                                                                  (images, audio, final.mp4)
+        progress         └── SQLite (UserProfile/Project/   ◀── output/<owner>/<id>/ on disk
+                              Scene/JobLog)                       (images, audio, final.mp4)
 ```
 
-- Django process is thin: validate input, read/write the DB, enqueue Celery tasks,
-  stream SSE, serve media.
+- Django process is thin: handle the Cognito OAuth callback, validate input, read/write
+  the DB, enqueue Celery tasks, stream SSE, serve media (only the owner's files).
 - The **Celery worker** does all the heavy lifting by calling the existing
   `pipeline/` modules as a **library** — no shelling out to `python -m pipeline.*`.
 - Progress flows worker → Redis pub/sub channel → Django SSE endpoint → browser, and
@@ -86,13 +98,29 @@ selection uses the **existing `.env` flags** we just built (`LLM_PROVIDER`,
 
 ## 4. Data models
 
-No `User`. Three tables.
+Four tables. Identity comes from **AWS Cognito** (§4a); we store only a thin profile.
+
+### UserProfile
+A local mirror of the Cognito identity so projects have a stable FK and we can show a
+name/email without calling Cognito on every request.
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | int (pk) | |
+| `cognito_sub` | char, unique, indexed | The Cognito user's `sub` claim — the real identity. |
+| `email` | char | Mirrored from the token on first login. |
+| `name` | char, blank | Display name. |
+| `created_at` | datetime | First login (just-in-time provisioned). |
+
+> On first authenticated request we **get-or-create** the profile from the verified
+> JWT claims. (If using `mozilla-django-oidc`, this maps onto Django's `User` instead —
+> either way it's keyed by `cognito_sub`.)
 
 ### Project
 | Field          | Type                        | Notes |
 |----------------|-----------------------------|-------|
-| `id`           | UUID (pk)                   | Also the `output/<id>/` folder name. |
-| `prompt`       | text                        | The raw idea the operator typed. |
+| `id`           | UUID (pk)                   | Also the `output/<owner>/<id>/` folder name. |
+| `owner`        | FK → UserProfile, indexed   | **Every project query filters by the signed-in user.** |
+| `prompt`       | text                        | The raw idea the user typed. |
 | `title`        | char, blank                 | Filled from the plan once generated. |
 | `status`       | char (enum, see below)      | |
 | `shot_plan`    | JSON, null                  | The full `ShotPlan` dict; editable during REVIEW. |
@@ -113,7 +141,7 @@ the plan. This avoids a dual source of truth between the JSON and the rows.
 |-------|------|-------|
 | `project` | FK → Project | |
 | `index` | int | Index into `shot_plan["scenes"]`; the scene's order. |
-| `image_path` | char, blank | Relative to `output/<id>/` (e.g. `images/scene_03.png`). |
+| `image_path` | char, blank | Relative to `output/<owner>/<id>/` (e.g. `images/scene_03.png`). |
 | `image_status` | char (enum: PENDING/RUNNING/DONE/FAILED) | |
 | `image_provider` | char, blank | Backend that actually produced it (the fallback chain may differ from the request). |
 
@@ -136,8 +164,17 @@ the plan. This avoids a dual source of truth between the JSON and the rows.
 
 ```
 ┌────────────────────────────┐
+│ UserProfile                │  ← mirror of the AWS Cognito identity
+│  id            int  (pk)   │
+│  cognito_sub   char uniq   │
+│  email / name  char        │
+└────────────┬───────────────┘
+             │ 1
+             │ N  (owner)
+┌────────────┴───────────────┐
 │ Project                    │
 │  id            uuid  (pk)  │
+│  owner         fk →profile │  ← every query filtered by signed-in user
 │  prompt        text        │
 │  title         char        │
 │  status        enum        │──── DRAFT→PLANNING→REVIEW→GENERATING→DONE  (·→FAILED)
@@ -182,9 +219,43 @@ State transitions (who triggers them):
 
 ---
 
+## 4a. Authentication (AWS Cognito)
+
+Identity is fully delegated to a **Cognito user pool** — Django never stores passwords.
+
+**Flow (Authorization Code + Hosted UI, recommended):**
+1. Unauthenticated request → redirect to the Cognito **Hosted UI** (`/login`) for the
+   app client. Sign-up, email verification, password reset, and Google sign-in (a
+   Cognito social IdP) are all handled there — *those screens are Cognito's*, so the
+   mockup's login/signup pages are illustrative of the experience, not custom code.
+2. Cognito redirects back to `/auth/callback?code=…`; Django exchanges the code for
+   **ID + access + refresh tokens**.
+3. Django stores the session (signed cookie) and **get-or-creates** the `UserProfile`
+   from the verified ID-token claims (`sub`, `email`, `name`).
+4. API calls are authorized by the session; DRF resolves `request.user` →
+   `UserProfile`. Tokens are verified against the pool's **JWKS** (issuer + audience +
+   expiry checked).
+
+**Config (env, never committed):** `COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`,
+`COGNITO_APP_CLIENT_SECRET`, `COGNITO_DOMAIN`, `COGNITO_REGION`, `OAUTH_REDIRECT_URI`.
+
+**Endpoints:** `GET /auth/login` (→ Hosted UI), `GET /auth/callback` (code exchange),
+`POST /auth/logout` (clear session + Cognito logout URL). `mozilla-django-oidc` can
+provide all three; otherwise a thin custom view + `python-jose` for verification.
+
+**Isolation:** every `/api/projects/...` view requires auth and filters
+`owner=request.user`; a project belonging to another user returns **404** (not 403, so
+ids aren't enumerable). Anonymous → **401**.
+
+> **Local dev note:** Cognito is the one cloud dependency in the MVP. A dev still needs
+> a (free-tier) user pool + app client configured; everything else runs locally.
+
+---
+
 ## 5. API
 
-DRF, JSON, no auth. Base path `/api/`.
+DRF, JSON. **All endpoints below require an authenticated session** (§4a) and operate
+only on the caller's own projects. Base path `/api/`.
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -193,7 +264,7 @@ DRF, JSON, no auth. Base path `/api/`.
 | `GET`  | `/api/projects/{id}/` | Detail: project + scenes + recent JobLog. |
 | `PATCH`| `/api/projects/{id}/` | Manually edit `shot_plan` (allowed only while `REVIEW`). |
 | `POST` | `/api/projects/{id}/refine/` | Revise the plan via a natural-language instruction (LLM re-run); `REVIEW` only. |
-| `DELETE`| `/api/projects/{id}/` | Delete row + `output/<id>/` folder. |
+| `DELETE`| `/api/projects/{id}/` | Delete row + `output/<owner>/<id>/` folder. |
 | `POST` | `/api/projects/{id}/approve/` | Approve the plan; enqueues the assets pipeline → `GENERATING`. |
 | `POST` | `/api/projects/{id}/scenes/{index}/regenerate/` | Re-run one scene's image. |
 | `POST` | `/api/projects/{id}/regenerate-images/` | Re-run **all** scene images. |
@@ -201,7 +272,7 @@ DRF, JSON, no auth. Base path `/api/`.
 | `POST` | `/api/projects/{id}/regenerate-voiceovers/` | Re-run **all** scene voiceovers. |
 | `POST` | `/api/projects/{id}/reassemble/` | Re-stitch `final.mp4` from current assets (clears `stale`). |
 | `GET`  | `/api/projects/{id}/events/` | **SSE** stream of progress events. |
-| `GET`  | `/api/projects/{id}/download/` | Serve `output/<id>/final.mp4`. |
+| `GET`  | `/api/projects/{id}/download/` | Serve `output/<owner>/<id>/final.mp4`. |
 
 The review gate (`approve`) is the web equivalent of the CLI's plan→images review
 gate. Generation never starts until the operator approves, matching the
@@ -306,8 +377,9 @@ data: {"stage":"images","level":"info","message":"scene 3/12 done",
 On connect: replay current `status` + recent `JobLog`, then tail live. Client closes
 on terminal `status` (`DONE`/`FAILED`).
 
-**Errors** use DRF defaults: `400` (validation), `404` (no such project/scene),
-`409` (action not allowed in current status). Body: `{ "detail": "…" }`.
+**Errors** use DRF defaults: `401` (not signed in), `400` (validation), `404` (no such
+project/scene **or not owned by the caller** — see §4a), `409` (action not allowed in
+current status). Body: `{ "detail": "…" }`.
 
 ---
 
@@ -368,11 +440,17 @@ the voiceover mp3s in `assemble`, **never** from the plan (existing invariant).
 
 ## 9. Frontend (server-rendered)
 
-Two pages, Django templates + vanilla JS. No framework.
+Pages are Django templates + vanilla JS. No framework. A persistent header shows the
+signed-in user (name/email) and a **Log out** action; unauthenticated visits redirect
+to the Cognito Hosted UI (§4a). A visual reference for every screen lives in
+[`mockup.html`](./mockup.html) (open in a browser).
 
+0. **Auth** — login / sign-up / email-verification are presented by **Cognito Hosted
+   UI** (`mockup.html` shows the equivalent screens for handoff). After callback the
+   user lands on Home.
 1. **Index** (`/`): a prompt box + options (image backend, animate toggle with the
    credit warning, voice) → POST creates a project and redirects to its page. Below,
-   a list of past projects with status badges.
+   **the signed-in user's** projects with status badges.
 2. **Project** (`/projects/{id}/`):
    - **REVIEW** — the shot plan, revised two ways side by side, plus Approve / Delete:
      - **Refine box** — a text input + "Refine" button that POSTs an instruction to
@@ -398,9 +476,9 @@ Two pages, Django templates + vanilla JS. No framework.
 
 | Deferred | Becomes (full spec) |
 |----------|---------------------|
-| No auth / single operator | User model, sessions, API keys. |
+| Cognito auth, local profile mirror | Same Cognito pool + roles/quotas, API keys, org/teams. |
 | SQLite | PostgreSQL / RDS. |
-| Local disk `output/<id>/` | S3 + CloudFront, presigned URLs. |
+| Local disk `output/<owner>/<id>/` | S3 + CloudFront, presigned URLs (ACLs disabled — see `webapp-spec.md` §8). |
 | Redis local | ElastiCache. |
 | Django templates + vanilla JS | Next.js 14 frontend. |
 | One worker on localhost | ECS services, autoscaling Celery workers. |
@@ -428,13 +506,18 @@ These were open; now settled (explicit by preference — no defaults left implic
 
 ## 12. Run (when we build it)
 
+**One-time:** create a Cognito **user pool** + **app client** (allow the
+authorization-code flow, callback `http://127.0.0.1:8000/auth/callback`, enable Google
+IdP if wanted), then add the `COGNITO_*` values to `.env`.
+
 ```bash
 python3.12 -m venv .venv-web && source .venv-web/bin/activate
 pip install -r requirements-web.txt
 redis-server &                       # broker + pub/sub
 celery -A webapp worker -l info &    # the generation worker
 python manage.py migrate
-python manage.py runserver           # http://127.0.0.1:8000
+python manage.py runserver           # http://127.0.0.1:8000 → redirects to Cognito login
 ```
 
-`.env` (the existing one) drives provider/flag config — never committed.
+`.env` (the existing one) drives provider/flag config **and** the `COGNITO_*` settings
+— never committed.

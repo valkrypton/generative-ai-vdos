@@ -82,23 +82,93 @@
   .g4{background:linear-gradient(135deg,#c06efe,#6e8efe)}
   .g5{background:linear-gradient(135deg,#5cd6a4,#d6cf5c)}
   .gpend{background:repeating-linear-gradient(45deg,#222733,#222733 10px,#1b1f29 10px,#1b1f29 20px);color:var(--muted)}
+  .userarea{display:flex;align-items:center;gap:10px}
+  .uchip{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);
+       border:1px solid var(--line);border-radius:999px;padding:4px 12px 4px 4px}
+  .uchip .av{width:24px;height:24px;border-radius:50%;background:var(--accent);color:#0a0d14;
+       display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px}
+  .authwrap{min-height:64vh;display:flex;align-items:center;justify-content:center}
+  .auth{width:390px;max-width:100%}
+  .auth .btn{width:100%;justify-content:center}
+  .divider{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px;margin:16px 0}
+  .divider::before,.divider::after{content:"";flex:1;border-top:1px solid var(--line)}
+  .cognito{font-size:11px;color:var(--muted);text-align:center;margin-top:18px;line-height:1.5}
+  .code-inputs{display:flex;gap:8px;justify-content:center;margin-top:6px}
+  .code-inputs input{width:46px;text-align:center;font-size:20px;padding:10px 0}
 </style>
 </head>
 <body>
 <header class="top">
-  <div class="brand">🎬 AI Video Studio <small>local mockup — not wired up</small></div>
+  <div class="brand">🎬 AI Video Studio <small>UI mockup — click the tabs to walk the flow</small></div>
   <nav class="switch" id="switch">
-    <button data-s="home" class="active">Home</button>
-    <button data-s="review">Project · Review</button>
-    <button data-s="gen">Project · Generating</button>
-    <button data-s="done">Project · Done</button>
-    <button data-s="fail">Project · Failed</button>
+    <button data-s="login" class="active">Log in</button>
+    <button data-s="signup">Sign up</button>
+    <button data-s="verify">Verify</button>
+    <button data-s="home">Home</button>
+    <button data-s="review">Review</button>
+    <button data-s="gen">Generating</button>
+    <button data-s="done">Done</button>
+    <button data-s="fail">Failed</button>
   </nav>
+  <div class="userarea" id="userarea">
+    <span class="uchip"><span class="av">A</span> awais@arbisoft.com</span>
+    <button class="btn ghost sm" onclick="show('login')">Log out</button>
+  </div>
 </header>
 <main>
 
+<!-- ============ LOG IN ============ -->
+<section class="screen active" id="login">
+  <div class="authwrap"><div class="card auth">
+    <div class="brand" style="font-size:20px">🎬 AI Video Studio</div>
+    <p class="muted small" style="margin:4px 0 18px">Sign in to create and manage your videos.</p>
+    <label class="fld">Email</label>
+    <input type="text" value="awais@arbisoft.com">
+    <label class="fld" style="margin-top:12px">Password</label>
+    <input type="text" value="••••••••">
+    <div style="text-align:right;margin-top:8px"><a href="#" class="small">Forgot password?</a></div>
+    <button class="btn" style="margin-top:14px" onclick="show('home')">Sign in</button>
+    <div class="divider">or</div>
+    <button class="btn ghost" onclick="show('home')">Continue with Google</button>
+    <p class="small muted" style="text-align:center;margin-top:16px">No account? <a href="#" onclick="show('signup');return false">Create one</a></p>
+    <p class="cognito">🔒 Authentication by <b>AWS Cognito</b> (user pool / hosted UI).<br>Google is a Cognito social identity provider.</p>
+  </div></div>
+</section>
+
+<!-- ============ SIGN UP ============ -->
+<section class="screen" id="signup">
+  <div class="authwrap"><div class="card auth">
+    <div class="brand" style="font-size:20px">🎬 AI Video Studio</div>
+    <p class="muted small" style="margin:4px 0 18px">Create your account.</p>
+    <label class="fld">Name</label><input type="text" value="Awais Qureshi">
+    <label class="fld" style="margin-top:12px">Email</label><input type="text" value="awais@arbisoft.com">
+    <label class="fld" style="margin-top:12px">Password</label><input type="text" value="••••••••">
+    <label class="fld" style="margin-top:12px">Confirm password</label><input type="text" value="••••••••">
+    <button class="btn" style="margin-top:14px" onclick="show('verify')">Create account</button>
+    <div class="divider">or</div>
+    <button class="btn ghost" onclick="show('home')">Sign up with Google</button>
+    <p class="small muted" style="text-align:center;margin-top:16px">Already have an account? <a href="#" onclick="show('login');return false">Log in</a></p>
+    <p class="cognito">🔒 Registration creates a user in the <b>AWS Cognito</b> user pool; a verification code is emailed.</p>
+  </div></div>
+</section>
+
+<!-- ============ VERIFY EMAIL ============ -->
+<section class="screen" id="verify">
+  <div class="authwrap"><div class="card auth">
+    <div class="brand" style="font-size:20px">🎬 AI Video Studio</div>
+    <p class="muted small" style="margin:4px 0 18px">Enter the 6-digit code sent to <b>awais@arbisoft.com</b>.</p>
+    <div class="code-inputs">
+      <input type="text" value="4"><input type="text" value="9"><input type="text" value="2">
+      <input type="text" value="0"><input type="text" value="1"><input type="text" value="7">
+    </div>
+    <button class="btn" style="margin-top:18px" onclick="show('home')">Verify &amp; continue</button>
+    <p class="small muted" style="text-align:center;margin-top:14px">Didn’t get it? <a href="#">Resend code</a></p>
+    <p class="cognito">🔒 Confirms the Cognito sign-up (<code>ConfirmSignUp</code>), then drops you into the app.</p>
+  </div></div>
+</section>
+
 <!-- ============ HOME ============ -->
-<section class="screen active" id="home">
+<section class="screen" id="home">
   <h1>Create a video</h1>
   <p class="sub">Describe an idea. We'll write a shot plan you can review and refine before anything is generated.</p>
   <div class="card">
@@ -246,17 +316,14 @@
   <!-- VIDEO -->
   <h2>Video</h2>
   <div class="card">
-    <video class="videobox" controls preload="metadata" style="width:100%;height:auto"
-           poster="" src="../output/embracing-the-wave-a-tale-of-courage/final.mp4">
-      Your browser can’t play this video — it points at a local <code>output/&lt;id&gt;/final.mp4</code>.
-    </video>
+    <div class="videobox g1"><div class="play">▶</div>
+      <span style="position:absolute;bottom:10px;right:12px;background:#0009;padding:3px 9px;border-radius:6px;font-size:12px">0:48 · 1080×1920</span></div>
     <div class="toolbar" style="margin-top:12px;margin-bottom:0">
-      <a class="btn ghost sm" href="../output/embracing-the-wave-a-tale-of-courage/final.mp4" download>⬇ Download final.mp4</a>
-      <span class="muted small">1080×1920 · 0:48 · 12 scenes</span>
+      <button class="btn ghost sm">⬇ Download final.mp4</button>
+      <span class="muted small">12 scenes</span>
       <span class="sp"></span>
       <button class="btn warn sm" disabled style="opacity:.45;cursor:default">Rebuild video</button>
     </div>
-    <p class="note">Plays a real local render from <code>output/</code> (gitignored — present on your machine, not committed).</p>
   </div>
 
   <!-- IMAGES -->
@@ -335,14 +402,17 @@
 <script>
   const screens=[...document.querySelectorAll('.screen')];
   const btns=[...document.querySelectorAll('#switch button')];
+  const authScreens=['login','signup','verify'];
   function show(id){
     screens.forEach(s=>s.classList.toggle('active',s.id===id));
     btns.forEach(b=>b.classList.toggle('active',b.dataset.s===id));
+    document.getElementById('userarea').style.display=authScreens.includes(id)?'none':'flex';
     window.scrollTo(0,0);
   }
   document.getElementById('switch').addEventListener('click',e=>{
     if(e.target.dataset.s) show(e.target.dataset.s);
   });
+  show('login');
 </script>
 </body>
 </html>
