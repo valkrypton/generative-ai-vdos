@@ -93,17 +93,24 @@ def generate_scene_image(
     scene_prompt = plan.expand(scene.image_prompt)
     prompt = f"{plan.style_prefix}, {scene_prompt}"
 
-    # Reference-image consistency: for a scene with exactly ONE character, edit
-    # from that character's reference portrait so the face/clothing stays the same
-    # scene to scene. (qwen-image-edit takes a single reference, so multi-character
-    # scenes can't be locked this way — they fall through to text-to-image.)
+    # Reference-image consistency: edit the scene from each present character's
+    # reference portrait so faces/clothing stay the same scene to scene.
+    # qwen-image-2.0 takes up to 3 references, so multi-character scenes lock too.
     if char_refs and not scene.reference_image and hasattr(primary, "edit"):
         named = [n for n in plan.characters_in(scene.image_prompt) if n in char_refs]
-        if len(named) == 1:
-            edit_prompt = (prompt + " Keep the person's face, hair and clothing "
-                           "identical to the reference image.")
+        refs = [char_refs[n] for n in named][:3]
+        if refs:
+            if len(refs) == 1:
+                edit_prompt = (prompt + " Keep the person's face, hair and clothing "
+                               "identical to the reference image.")
+            else:
+                mapping = "; ".join(f"reference image {i + 1} is {{{n}}}"
+                                    for i, n in enumerate(named[:3]))
+                edit_prompt = (prompt + f" Identity references — {mapping}. Keep each "
+                               "person's face, hair and clothing identical to their "
+                               "reference image.")
             try:
-                primary.edit(edit_prompt, char_refs[named[0]], path)
+                primary.edit(edit_prompt, refs, path)
                 return path, primary
             except Exception as e:
                 print(f"  images: scene {index + 1} reference edit failed ({e}); "
