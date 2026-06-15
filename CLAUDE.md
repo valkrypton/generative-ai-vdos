@@ -7,7 +7,8 @@ user guide; this file covers what an agent needs to work on the codebase safely.
 ## Commands
 
 ```bash
-source .venv/bin/activate                  # python 3.9 venv at repo root
+uv sync                                    # install/update deps (creates .venv at repo root)
+source .venv/bin/activate                  # activate venv (or prefix commands with `uv run`)
 python -m pipeline.refine "idea"           # plan + auto-polish (stage 1, ~$0.001)
 python -m pipeline.refine --change "..."   # revise latest plan
 python -m pipeline.images                  # stage 2 (free via qwen)
@@ -105,7 +106,7 @@ changes by running stages against a copy of `examples/the-sharing-berry/` with
 
 ## Conventions
 
-- Python 3.9 compatible (no `X | None`, use `Optional`).
+- Python 3.13+ (use `X | None` union syntax, `match` statements, etc. freely).
 - Stage CLIs live in each module (`main()` + `__main__.py` for packages); keep new
   stages consistent with that pattern.
 - `output/`, `music/`, `.env`, `.venv` are gitignored — never force-add them.
