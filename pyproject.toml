@@ -1,0 +1,20 @@
+[project]
+name = "generative-ai-vdos"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "anthropic>=0.40",
+    "openai>=1.40",
+    "pydantic>=2.5",
+    "edge-tts>=6.1",
+    "pillow>=10.0",
+]
+
+[project.optional-dependencies]
+replicate = ["replicate>=0.32"]
+faceswap = [
+    "insightface>=0.7",
+    "onnxruntime>=1.16",
+    "opencv-python-headless>=4.8",
+]
+
