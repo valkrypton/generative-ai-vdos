@@ -2,10 +2,11 @@
 
 Pick the backend with the LLM_PROVIDER flag (a friendly name, not a model id):
 "openai" -> OpenAI (OPENAI_API_KEY), "litellm"/"libra" -> the company LiteLLM
-proxy (LITELLM_API_KEY, LITELLM_BASE_URL), "anthropic" -> Claude (ANTHROPIC_API_KEY).
+proxy (LITELLM_API_KEY, LITELLM_BASE_URL), "anthropic" -> Claude (ANTHROPIC_API_KEY),
+"gemini"/"google" -> Gemini (GOOGLE_API_KEY).
 With no flag set, the first configured key wins (free proxy first). Internally the
-chosen model name still routes: "gpt-*" -> OpenAI, "claude-*" -> Anthropic, anything
-else -> the LiteLLM proxy.
+chosen model name still routes: "gpt-*" -> OpenAI, "claude-*" -> Anthropic,
+"gemini-*" -> Gemini, anything else -> the LiteLLM proxy.
 """
 import json
 import os
@@ -128,16 +129,18 @@ def default_model() -> str:
     if not provider:
         raise RuntimeError(
             "no LLM provider set — put LLM_PROVIDER in .env "
-            "(openai | litellm/libra | anthropic) or pass --model")
+            "(openai | litellm/libra | anthropic | gemini) or pass --model")
     if provider == "openai":
         model, need = "gpt-4o-mini", "OPENAI_API_KEY"
     elif provider in ("anthropic", "claude"):
         model, need = "claude-haiku-4-5", "ANTHROPIC_API_KEY"
+    elif provider in ("gemini", "google"):
+        model, need = "gemini-3.1-flash-lite", "GOOGLE_API_KEY"
     elif provider in ("litellm", "libra", "company"):
         model, need = os.environ.get("LITELLM_MODEL", LITELLM_DEFAULT_MODEL), "LITELLM_API_KEY"
     else:
         raise RuntimeError(
-            f"unknown LLM_PROVIDER '{provider}' — use openai, litellm/libra, or anthropic")
+            f"unknown LLM_PROVIDER '{provider}' — use openai, litellm/libra, anthropic, or gemini")
     if not os.environ.get(need):
         raise RuntimeError(f"LLM provider '{provider}' is not configured — set {need} in .env")
     return model
@@ -158,6 +161,16 @@ def _parse_with_llm(user_content: str, model: str) -> ShotPlan:
         return response.parsed_output
 
     from openai import OpenAI
+
+    if model.startswith("gemini"):
+        key = os.environ.get("GOOGLE_API_KEY")
+        if not key:
+            raise RuntimeError("Gemini provider needs GOOGLE_API_KEY — set it in .env")
+        client = OpenAI(
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            api_key=key,
+        )
+        return _parse_json_mode(client, model, user_content)
 
     if model.startswith("gpt"):
         # native OpenAI — strict json_schema parse is reliable here
