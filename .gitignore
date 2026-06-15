@@ -16,6 +16,7 @@ credentials
 .venv/
 __pycache__/
 *.pyc
+uv.lock
 
 # Generated artifacts (videos, images, audio, state)
 output/
