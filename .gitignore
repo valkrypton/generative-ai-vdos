@@ -30,3 +30,6 @@ music/
 .idea
 venv/
 
+backend/db.sqlite3
+webapp/node_modules/
+webapp/.next/
