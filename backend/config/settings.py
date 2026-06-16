@@ -15,6 +15,8 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "apps.health",
+    "apps.users",
+    "apps.projects",
 ]
 
 MIDDLEWARE = [
