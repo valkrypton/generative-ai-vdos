@@ -11,7 +11,8 @@ everything deferred here is captured in §10.
 
 > **Decision log:** auth was initially out of scope ("single-user, no auth"), then
 > changed to **multi-user accounts via AWS Cognito**. Media still lives on local disk
-> (S3 deferred); billing still deferred.
+> (S3 deferred); billing still deferred. Frontend was originally Django templates + vanilla JS,
+> then changed to **Next.js 14 (App Router)** — matching the full SaaS target from day one.
 
 ---
 
@@ -35,13 +36,12 @@ everything deferred here is captured in §10.
 - No billing/Stripe/quotas.
 - No media in the cloud — `final.mp4`, images, audio stay on **local disk** (S3/CloudFront
   deferred). Auth is the one cloud dependency (AWS Cognito).
-- No Next.js/React build step — server-rendered Django templates + vanilla JS.
 - Animation stays **off by default** (spends DashScope credit; opt-in only — see §7).
 
 **Success criteria:** from a clean checkout (plus a configured Cognito user pool), a
-developer can run three processes (Redis, Celery worker, Django), sign in, and produce
-the same `output/<owner>/<id>/final.mp4` the CLI produces — driven entirely from the browser,
-with progress streamed live, isolated to the signed-in user.
+developer can run four processes (Redis, Celery worker, Django API, Next.js dev server),
+sign in, and produce the same `output/<owner>/<id>/final.mp4` the CLI produces — driven
+entirely from the browser, with progress streamed live, isolated to the signed-in user.
 
 ---
 
@@ -49,22 +49,22 @@ with progress streamed live, isolated to the signed-in user.
 
 | Layer        | Choice                                  | Notes |
 |--------------|-----------------------------------------|-------|
-| Language     | **Python 3.10+** (3.12 available locally) | Django 5.2 needs ≥3.10. The `pipeline/` package itself stays 3.9-compatible. |
-| Web          | **Django 5.2** + **Django REST Framework** | Server-rendered templates for pages; DRF for the JSON API the JS calls. |
+| Backend lang | **Python 3.13** (repo standard)         | Django 5.2 + Celery + pipeline/ all share one uv-managed venv. |
+| Frontend lang| **Node.js 20+ / TypeScript**            | Next.js 14 App Router. |
+| API          | **Django 5.2** + **Django REST Framework** | Thin JSON API only — no Django templates. DRF serves `/api/`. |
 | Auth         | **AWS Cognito** user pool               | Hosted UI / OAuth2; Django validates Cognito JWTs (JWKS). See §4a. |
 | Async jobs   | **Celery 5.4** + **Redis**              | Redis is broker + result backend + SSE pub/sub. |
 | DB           | **SQLite**                              | Single file, zero setup. Holds projects + a thin user-profile row keyed by Cognito `sub`. |
-| Frontend     | Django templates + vanilla JS (`fetch` + `EventSource`) | No npm, no bundler. |
+| Frontend     | **Next.js 14** (App Router) + shadcn/ui + Tailwind | Proxies `/api/*` to Django via `next.config.js` rewrites. |
 | Media        | Local filesystem, served by Django (dev) | Reuses the pipeline's `output/<owner>/<id>/` layout. |
 | System dep   | `ffmpeg-full` (libass), edge-tts        | Same as the CLI today. |
 
-**Dependencies** (a `requirements-web.txt`, created when we build — not now):
-`Django>=5.2,<5.3`, `djangorestframework>=3.15`, `celery>=5.4`, `redis>=5.0`,
-`python-jose[cryptography]` (verify Cognito JWTs) or `mozilla-django-oidc`,
-plus the existing `pipeline/` requirements.
+**Python dependencies** — added as a `webapp` optional group in `pyproject.toml`
+(`uv sync --extra webapp`): `Django>=5.2,<5.3`, `djangorestframework>=3.15`,
+`celery>=5.4`, `redis>=5.0`, `python-jose[cryptography]` (Cognito JWT verification).
 
-Runs in a separate **Python 3.12 venv** (`.venv-web`) so the repo's 3.9 `.venv`
-(used by the CLI) is untouched.
+**Node dependencies** — `package.json` in `webapp/` (Next.js app root):
+`next@14`, `react`, `react-dom`, `typescript`, `tailwindcss`, `shadcn/ui`.
 
 ---
 
@@ -73,26 +73,29 @@ Runs in a separate **Python 3.12 venv** (`.venv-web`) so the repo's 3.9 `.venv`
 ```
                   AWS Cognito (user pool, Hosted UI)
                         ▲ OAuth code ▼ JWT
-Browser ──fetch──▶ Django (DRF views) ──enqueue──▶ Redis ──▶ Celery worker
-   ▲                     │                                        │
-   │                     │ reads/writes                           │ calls pipeline/ functions
-   └──EventSource(SSE)───┤                                        ▼
-        progress         └── SQLite (UserProfile/Project/   ◀── output/<owner>/<id>/ on disk
-                              Scene/JobLog)                       (images, audio, final.mp4)
+Browser ──fetch──▶ Next.js 14 ──/api/* proxy──▶ Django DRF ──enqueue──▶ Redis ──▶ Celery worker
+   ▲                  (App Router)                   │                                   │
+   │                                                 │ reads/writes                      │ calls pipeline/ functions
+   └──EventSource(SSE via proxy)────────────────────┤                                    ▼
+                                                     └── SQLite (UserProfile/Project/ ◀── output/<owner>/<id>/ on disk
+                                                           Scene/JobLog)                  (images, audio, final.mp4)
 ```
 
-- Django process is thin: handle the Cognito OAuth callback, validate input, read/write
-  the DB, enqueue Celery tasks, stream SSE, serve media (only the owner's files).
-- The **Celery worker** does all the heavy lifting by calling the existing
+- **Next.js** serves all pages. All `/api/*` calls are proxied to Django via
+  `next.config.js` rewrites — same origin for cookies, same routing shape as the
+  full SaaS target (CloudFront routes `/api/*` to Django ALB).
+- **Django** is a pure JSON API: Cognito OAuth callback, JWT verification, DB reads/writes,
+  Celery enqueue, SSE streaming, media serving. No templates.
+- The **Celery worker** does all heavy lifting by calling the existing
   `pipeline/` modules as a **library** — no shelling out to `python -m pipeline.*`.
-- Progress flows worker → Redis pub/sub channel → Django SSE endpoint → browser, and
-  is also persisted to `JobLog` so a late-joining client can replay state.
+- Progress flows worker → Redis pub/sub channel → Django SSE endpoint → Next.js proxy → browser,
+  and is also persisted to `JobLog` so a late-joining client can replay state.
 
 **Reuse, don't rewrite:** the worker imports `pipeline.script_agent`, `pipeline.images`,
 `pipeline.voiceover`, `pipeline.assemble`, `pipeline.schema`. The web layer adds
 orchestration + persistence around them; the generation logic is unchanged. Provider
-selection uses the **existing `.env` flags** we just built (`LLM_PROVIDER`,
-`IMAGE_BACKEND`, etc.) — explicit, no auto-detect.
+selection uses the **existing `.env` flags** (`LLM_PROVIDER`, `IMAGE_BACKEND`, etc.) —
+explicit, no auto-detect.
 
 ---
 
@@ -438,37 +441,58 @@ the voiceover mp3s in `assemble`, **never** from the plan (existing invariant).
 
 ---
 
-## 9. Frontend (server-rendered)
+## 9. Frontend (Next.js 14 App Router)
 
-Pages are Django templates + vanilla JS. No framework. A persistent header shows the
-signed-in user (name/email) and a **Log out** action; unauthenticated visits redirect
-to the Cognito Hosted UI (§4a). A visual reference for every screen lives in
+Next.js 14 App Router, TypeScript, shadcn/ui + Tailwind. All pages are client-side or
+server components as appropriate. A persistent header shows the signed-in user
+(name/email) and a **Log out** action; unauthenticated visits redirect to the Cognito
+Hosted UI (§4a). A visual reference for every screen lives in
 [`mockup.html`](./mockup.html) (open in a browser).
 
-0. **Auth** — login / sign-up / email-verification are presented by **Cognito Hosted
-   UI** (`mockup.html` shows the equivalent screens for handoff). After callback the
-   user lands on Home.
-1. **Index** (`/`): a prompt box + options (image backend, animate toggle with the
-   credit warning, voice) → POST creates a project and redirects to its page. Below,
-   **the signed-in user's** projects with status badges.
-2. **Project** (`/projects/{id}/`):
-   - **REVIEW** — the shot plan, revised two ways side by side, plus Approve / Delete:
-     - **Refine box** — a text input + "Refine" button that POSTs an instruction to
-       `/refine/` (the LLM path); spinner while `PLANNING`, updated plan via SSE.
-     - **Manual edit** — inline-editable plan fields that PATCH `shot_plan` directly.
-   - **GENERATING** — live progress log (SSE); the image gallery fills in as each scene
-     lands (tile status PENDING → RUNNING → DONE).
-   - **DONE / FAILED** — three editable panels over the generated assets, each using the
-     same edit-then-regenerate pattern:
-     - **Images** — grid of all scene images; per-image **Regenerate** + a
-       **Regenerate all images** button.
-     - **Voiceover** — per scene, the editable **narration** text and an optional voice
-       override, with a **Re-voice** button; plus **Regenerate all voiceovers**. Editing
-       narration here updates `shot_plan` and re-runs only that scene's TTS.
-     - **Video** — embedded `<video>` + Download. A **Rebuild video** button,
-       highlighted when assets are **stale** (an image or voiceover changed since the
-       last assemble), re-stitches `final.mp4` from the current assets.
-     Failed tiles show the error inline with a retry.
+### Routes
+
+| Route | Purpose |
+|-------|---------|
+| `/` | Index — prompt box + project list |
+| `/projects/[id]` | Project detail — adapts to current status |
+| `/auth/callback` | Handled by Django; Next.js receives redirect after session is set |
+
+### Pages
+
+0. **Auth** — Cognito Hosted UI handles login/signup/verification. After Django's
+   `/auth/callback` sets the session cookie, user lands on `/`.
+1. **Index** (`/`): prompt textarea + options (image backend dropdown, animate toggle
+   with credit warning, voice selector) → `POST /api/projects/` → redirect to
+   `/projects/{id}`. Below: the signed-in user's projects with status badges.
+2. **Project** (`/projects/[id]`): single route, view adapts to `status`:
+   - **REVIEW** — shot plan displayed as editable cards, two revision paths side by side:
+     - **Refine box** — text input + "Refine" button → `POST /api/projects/{id}/refine/`;
+       spinner while `PLANNING`, plan updates via SSE.
+     - **Manual edit** — inline-editable fields → `PATCH /api/projects/{id}/`.
+     Approve / Delete buttons.
+   - **GENERATING** — live progress feed (SSE via `EventSource`); image gallery tiles
+     fill in as each scene lands (PENDING → RUNNING → DONE).
+   - **DONE / FAILED** — three edit-then-regenerate panels:
+     - **Images** — scene image grid; per-image **Regenerate** + **Regenerate all**.
+     - **Voiceover** — per-scene narration textarea + voice override + **Re-voice**;
+       **Regenerate all voiceovers**.
+     - **Video** — `<video>` player + Download. **Rebuild video** button highlighted
+       when `stale=true`.
+     Failed tiles show inline error + retry.
+
+### Key components
+
+- **`<ProjectForm />`** — prompt + options on index, calls `POST /api/projects/`.
+- **`<PlanEditor />`** — scene cards with editable fields; Refine box + manual edit.
+- **`<ProgressFeed />`** — SSE `EventSource` subscriber; renders log + image gallery.
+- **`<SceneGrid />`** — image tiles with status overlays and per-scene regenerate.
+- **`<VideoPlayer />`** — `<video>` + download link + stale-aware Rebuild button.
+
+### Auth / session
+
+Next.js proxies all `/api/*` to Django (same origin). Django's session cookie is set
+on the Next.js origin after the Cognito callback redirect, so `fetch('/api/...')`
+carries it automatically. No tokens stored in JS.
 
 ---
 
@@ -480,7 +504,6 @@ to the Cognito Hosted UI (§4a). A visual reference for every screen lives in
 | SQLite | PostgreSQL / RDS. |
 | Local disk `output/<owner>/<id>/` | S3 + CloudFront, presigned URLs (ACLs disabled — see `webapp-spec.md` §8). |
 | Redis local | ElastiCache. |
-| Django templates + vanilla JS | Next.js 14 frontend. |
 | One worker on localhost | ECS services, autoscaling Celery workers. |
 | No billing | Stripe, Plans, Subscriptions, quotas. |
 
@@ -512,14 +535,20 @@ authorization-code flow, callback `http://127.0.0.1:8000/auth/callback`, enable 
 IdP if wanted), then add the `COGNITO_*` values to `.env`.
 
 ```bash
-python3.12 -m venv .venv-web && source .venv-web/bin/activate
-pip install -r requirements-web.txt
-redis-server &                       # broker + pub/sub
-celery -A webapp worker -l info &    # the generation worker
-python manage.py migrate
-python manage.py runserver           # http://127.0.0.1:8000 → redirects to Cognito login
+# Python deps (Django + Celery added as 'webapp' optional group)
+uv sync --extra webapp
+
+# Node deps (from webapp/ directory)
+cd webapp && npm install
+
+# Four processes (run each in its own terminal):
+redis-server                              # broker + SSE pub/sub
+uv run celery -A webapp worker -l info   # generation worker
+uv run python manage.py migrate && uv run python manage.py runserver  # Django API on :8000
+cd webapp && npm run dev                 # Next.js on :3000 → http://localhost:3000
 ```
 
+Next.js proxies `/api/*` to `http://localhost:8000` via `next.config.js` rewrites.
 `.env` (the existing one) drives provider/flag config **and** the `COGNITO_*` settings
 — never committed.
 
@@ -555,15 +584,11 @@ the other epics build on. Jawad floats across all three.
 
 ### Epic A — Authentication & Signup (Backend) · *lead: Zahid*
 
-**A1. Backend scaffolding — Django 5.2 + DRF + `.venv-web`**
-- **Contract:** A `webapp/` Django 5.2 project + DRF installed in a Python 3.12 `.venv-web`;
-  `requirements-web.txt` pins `Django>=5.2,<5.3`, `djangorestframework>=3.15`. The CLI's
-  3.9 `.venv` and `pipeline/` are untouched.
-- **Acceptance criteria:** `python manage.py check` passes; `runserver` boots; `pipeline/`
-  imports unchanged; CLI still runs from its own venv.
-- **Tests & edge cases:** smoke test imports `pipeline.schema` from the web venv; CI asserts
-  two venvs don't share deps; missing `.env` → clear startup error, not a stack trace.
-- **Review focus:** dependency isolation, no accidental coupling into `pipeline/`.
+**A1. Backend scaffolding — Django 5.2 + DRF + Next.js skeleton**
+- **Contract:** A `webapp/` Django 5.2 project + DRF; webapp deps added as a `webapp` optional group in `pyproject.toml` (`uv sync --extra webapp`).
+- **Acceptance criteria:** `uv run python manage.py check` passes; `runserver` boots on :8000.
+- **Tests & edge cases:** smoke test imports `pipeline.schema` from uv venv; missing `.env` → clear startup error; proxy correctly forwards cookies and SSE streams.
+- **Review focus:** dependency isolation; proxy config; no accidental coupling into `pipeline/`.
 
 **A2. Data models — UserProfile / Project / Scene / JobLog (§4)**
 - **Contract:** Four models exactly per §4, with the `Project.status` enum
@@ -622,50 +647,33 @@ the other epics build on. Jawad floats across all three.
 ### Epic B — Web Application (Front-end) · *lead: Ali Tariq*
 
 **B1. App shell + auth-gated layout (§9)**
-- **Contract:** Server-rendered base template + vanilla JS; persistent header shows the
-  signed-in user + Log out; unauthenticated visits redirect to Cognito Hosted UI. No npm/bundler.
-- **Acceptance criteria:** matches `mockup.html`; anon → redirect; signed-in → Home with
-  identity shown.
-- **Tests & edge cases:** expired session mid-navigation → redirect, not a 500; logout clears
-  session + Cognito.
-- **Review focus:** auth gating on every page; no client-side secret exposure.
+- **Contract:** Next.js 14 App Router; `next.config.js` rewrites `/api/*` → `http://localhost:8000`; persistent header shows signed-in user + Log out; unauthenticated visits redirect to Cognito Hosted UI. shadcn/ui + Tailwind set up.
+- **Acceptance criteria:** matches `mockup.html`; anon → redirect to Cognito; signed-in → Home with identity shown; `/api/*` fetch reaches Django.
+- **Tests & edge cases:** expired session mid-navigation → redirect, not a crash; logout clears Django session + Cognito; proxy correctly forwards cookies.
+- **Review focus:** auth gating on every route; proxy config doesn't expose Django internals; no secrets in JS bundle.
 
 **B2. Index — submit idea + project list (§5 `POST/GET /api/projects/`, §9.1)**
-- **Contract:** Prompt box + options (image backend, animate toggle **with credit warning**,
-  voice) → `POST /api/projects/` → redirect to project page; below, the caller's projects with
-  status badges.
-- **Acceptance criteria:** only `prompt` required (rest fall back to `.env`, D3); animate is
-  off by default and shows the DashScope-credit warning before enabling.
-- **Tests & edge cases:** empty prompt → inline validation (no request); list shows only the
-  user's projects; gpt-image-1 never preselected.
+- **Contract:** `<ProjectForm />` component — prompt textarea + options (image backend, animate toggle **with credit warning**, voice) → `POST /api/projects/` → `router.push('/projects/{id}')`. Project list below using `GET /api/projects/`.
+- **Acceptance criteria:** only `prompt` required (rest fall back to `.env`, D3); animate off by default with DashScope-credit warning; list shows only the signed-in user's projects.
+- **Tests & edge cases:** empty prompt → inline validation (no request); list shows only the user's projects; gpt-image-1 never preselected.
 - **Review focus:** money rules surfaced in UI (animate/gpt-image-1), correct default fallbacks.
 
 **B3. Plan review + revise UI (§5 `PATCH`/`refine`, §9.2 REVIEW)**
-- **Contract:** REVIEW screen offers both paths — a **Refine** box → `POST /refine/` (LLM) and
-  inline **manual edit** → `PATCH /shot_plan` — plus Approve / Delete.
-- **Acceptance criteria:** refine shows a spinner during `PLANNING` and updates the plan via
-  SSE; manual edits persist; editing outside REVIEW → 409 surfaced to the user.
-- **Tests & edge cases:** concurrent refine + manual edit resolves to one source of truth;
-  approve disabled until a plan exists; 409 handled gracefully.
-- **Review focus:** the review gate is enforced (no generation pre-approve); single-source plan.
+- **Contract:** `<PlanEditor />` component on `/projects/[id]` (REVIEW state) — Refine box → `POST /api/projects/{id}/refine/` (LLM) and inline editable scene cards → `PATCH /api/projects/{id}/` — plus Approve / Delete buttons.
+- **Acceptance criteria:** refine shows a spinner during `PLANNING` and updates plan via SSE; manual edits persist on blur/save; editing outside REVIEW → 409 surfaced as a toast/error; approve disabled until plan exists.
+- **Tests & edge cases:** concurrent refine + manual edit resolves to one source of truth; 409 handled gracefully.
+- **Review focus:** review gate enforced (no generation pre-approve); single-source plan.
 
 **B4. Generation screen + live progress via SSE (§8, §9.2 GENERATING)**
-- **Contract:** Subscribe to `GET /api/projects/{id}/events/` with `EventSource`; render the
-  log live and fill the image gallery as each scene lands (PENDING→RUNNING→DONE).
-- **Acceptance criteria:** ≥1 event per stage rendered; on (re)connect the client replays
-  current status + recent JobLog then tails; stream closes on terminal status.
-- **Tests & edge cases:** late-joiner/refresh shows correct state (replay); reconnect after
-  drop loses no terminal event; FAILED renders error + retry.
-- **Review focus:** reconnect/replay correctness; no busy-polling fallback.
+- **Contract:** `<ProgressFeed />` component subscribes to `EventSource('/api/projects/{id}/events/')` (proxied to Django); renders log live and fills `<SceneGrid />` as scenes land (PENDING→RUNNING→DONE).
+- **Acceptance criteria:** ≥1 event per stage rendered; on (re)connect replays current status + recent JobLog then tails live; `EventSource` closed on terminal status.
+- **Tests & edge cases:** late-joiner/refresh shows correct state (replay); reconnect after drop loses no terminal event; FAILED renders error + retry.
+- **Review focus:** reconnect/replay correctness; SSE works through Next.js proxy; no busy-polling fallback.
 
 **B5. Asset editing panels — images / voiceover / video (§5 regenerate*/revoice/reassemble, §9.2 DONE)**
-- **Contract:** Three edit-then-regenerate panels: image grid (per-image **Regenerate** +
-  **Regenerate all**), per-scene narration/voice (**Re-voice** + **Regenerate all voiceovers**),
-  and `<video>` + Download + **Rebuild video** (highlighted when `stale`).
-- **Acceptance criteria:** regenerating an image/voiceover sets `stale=true` and the Rebuild
-  button highlights; `reassemble/` clears `stale`; iterating never re-runs the LLM.
-- **Tests & edge cases:** force gpt-image-1 on a single scene works and is explicit-only;
-  stale indicator accurate after partial regen; failed tile shows inline error + retry.
+- **Contract:** Three shadcn/ui panels on the DONE project page: `<SceneGrid />` (per-image **Regenerate** + **Regenerate all**), per-scene narration/voice textarea (**Re-voice** + **Regenerate all voiceovers**), and `<VideoPlayer />` with Download + **Rebuild video** (highlighted when `stale=true`).
+- **Acceptance criteria:** regenerating image/voiceover sets `stale=true` and Rebuild button highlights; `reassemble/` clears `stale`; iterating never re-runs the LLM.
+- **Tests & edge cases:** force gpt-image-1 on a single scene is explicit-only; stale indicator accurate after partial regen; failed tile shows inline error + retry.
 - **Review focus:** stale/`final.mp4` consistency; money rules (explicit paid backend) in UI.
 
 ---
@@ -836,11 +844,7 @@ them into `script_agent` / the image provider per request — never via global e
 - **Review focus:** concurrency isolation, no key leakage, backward-compatible default path.
 
 **B6. Settings UI — manage models & keys + per-project selection** · *Epic B · Ali Tariq*
-- **Contract:** a Settings area to add/edit/delete credentials (masked input) and models;
-  the project create/refine screens show LLM + image dropdowns populated from the user's registry.
-- **Acceptance criteria:** keys shown masked, never pre-filled; `costs_money` models show a
-  warning before selection; selecting a model persists to the project; empty registry falls back
-  to `.env` defaults silently.
-- **Tests & edge cases:** masked key never in DOM/source; cost warning required before a paid
-  model is chosen; dropdowns scoped to the signed-in user.
+- **Contract:** Next.js `/settings` page with shadcn/ui forms — add/edit/delete credentials (masked input) and models; `<ProjectForm />` and plan review show LLM + image dropdowns from the user's registry.
+- **Acceptance criteria:** keys shown masked, never pre-filled in inputs; `costs_money` models show a warning before selection; selecting a model persists to the project; empty registry falls back to `.env` defaults silently.
+- **Tests & edge cases:** masked key never in DOM/source; cost warning required before a paid model is chosen; dropdowns scoped to the signed-in user.
 - **Review focus:** no client-side key exposure; money-rule warnings; isolation.

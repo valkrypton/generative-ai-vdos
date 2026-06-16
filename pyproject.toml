@@ -17,4 +17,17 @@ faceswap = [
     "onnxruntime>=1.16",
     "opencv-python-headless>=4.8",
 ]
+webapp = [
+    "Django>=5.2,<5.3",
+    "djangorestframework>=3.15",
+    "django-cors-headers>=4.4",
+    "celery>=5.4",
+    "redis>=5.0",
+    "python-jose[cryptography]>=3.3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.0",
+]
 
