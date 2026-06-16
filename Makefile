@@ -37,10 +37,12 @@ install-web: ffmpeg env
 	else \
 		npx create-next-app@14 webapp --typescript --tailwind --app --no-src-dir --import-alias "@/*"; \
 	fi
+	@cd webapp && npm install
 	@echo ""
-	@echo "Web deps ready. Run: make migrate && make dev"
+	@echo "Web deps ready. Run: make migrate && make backend (then make frontend in another shell)"
 
 migrate: $(VENV)
+	uv sync --extra webapp
 	$(MANAGE) migrate
 
 backend:
@@ -65,6 +67,9 @@ prod:
 	$(VENV)/bin/gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2
 
 test:
+	uv sync --extra webapp
+	$(MANAGE) test backend/tests
+	$(PY) -m pytest tests/test_pipeline_isolation.py
 	$(PY) -m tests.test_expand
 
 ffmpeg:
