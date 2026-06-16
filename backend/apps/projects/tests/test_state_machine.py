@@ -2,6 +2,7 @@ import uuid as _uuid
 from django.test import TestCase
 from apps.accounts.models import UserProfile
 from apps.projects.models import Project
+from apps.projects.constants import Status
 
 
 def make_project_in(status):
@@ -17,39 +18,44 @@ def make_project_in(status):
 
 class ValidTransitionsTest(TestCase):
     def test_draft_to_planning(self):
-        p = make_project_in(Project.Status.DRAFT)
-        p.transition_status(Project.Status.PLANNING)
-        self.assertEqual(p.status, Project.Status.PLANNING)
+        p = make_project_in(Status.DRAFT)
+        p.transition_status(Status.PLANNING)
+        self.assertEqual(p.status, Status.PLANNING)
 
     def test_planning_to_review(self):
-        p = make_project_in(Project.Status.PLANNING)
-        p.transition_status(Project.Status.REVIEW)
-        self.assertEqual(p.status, Project.Status.REVIEW)
+        p = make_project_in(Status.PLANNING)
+        p.transition_status(Status.REVIEW)
+        self.assertEqual(p.status, Status.REVIEW)
 
     def test_planning_to_failed(self):
-        p = make_project_in(Project.Status.PLANNING)
-        p.transition_status(Project.Status.FAILED)
-        self.assertEqual(p.status, Project.Status.FAILED)
+        p = make_project_in(Status.PLANNING)
+        p.transition_status(Status.FAILED)
+        self.assertEqual(p.status, Status.FAILED)
 
     def test_review_to_generating(self):
-        p = make_project_in(Project.Status.REVIEW)
-        p.transition_status(Project.Status.GENERATING)
-        self.assertEqual(p.status, Project.Status.GENERATING)
+        p = make_project_in(Status.REVIEW)
+        p.transition_status(Status.GENERATING)
+        self.assertEqual(p.status, Status.GENERATING)
+
+    def test_review_to_planning(self):
+        p = make_project_in(Status.REVIEW)
+        p.transition_status(Status.PLANNING)
+        self.assertEqual(p.status, Status.PLANNING)
 
     def test_generating_to_done(self):
-        p = make_project_in(Project.Status.GENERATING)
-        p.transition_status(Project.Status.DONE)
-        self.assertEqual(p.status, Project.Status.DONE)
+        p = make_project_in(Status.GENERATING)
+        p.transition_status(Status.DONE)
+        self.assertEqual(p.status, Status.DONE)
 
     def test_generating_to_failed(self):
-        p = make_project_in(Project.Status.GENERATING)
-        p.transition_status(Project.Status.FAILED)
-        self.assertEqual(p.status, Project.Status.FAILED)
+        p = make_project_in(Status.GENERATING)
+        p.transition_status(Status.FAILED)
+        self.assertEqual(p.status, Status.FAILED)
 
     def test_failed_to_generating(self):
-        p = make_project_in(Project.Status.FAILED)
-        p.transition_status(Project.Status.GENERATING)
-        self.assertEqual(p.status, Project.Status.GENERATING)
+        p = make_project_in(Status.FAILED)
+        p.transition_status(Status.GENERATING)
+        self.assertEqual(p.status, Status.GENERATING)
 
 
 class InvalidTransitionsTest(TestCase):
@@ -59,20 +65,20 @@ class InvalidTransitionsTest(TestCase):
             p.transition_status(to_status)
 
     def test_done_to_anything(self):
-        for s in [Project.Status.DRAFT, Project.Status.PLANNING,
-                  Project.Status.REVIEW, Project.Status.GENERATING,
-                  Project.Status.FAILED]:
+        for s in [Status.DRAFT, Status.PLANNING,
+                  Status.REVIEW, Status.GENERATING,
+                  Status.FAILED]:
             with self.subTest(to=s):
-                self._assert_raises(Project.Status.DONE, s)
+                self._assert_raises(Status.DONE, s)
 
     def test_review_to_failed(self):
-        self._assert_raises(Project.Status.REVIEW, Project.Status.FAILED)
+        self._assert_raises(Status.REVIEW, Status.FAILED)
 
     def test_review_to_done(self):
-        self._assert_raises(Project.Status.REVIEW, Project.Status.DONE)
+        self._assert_raises(Status.REVIEW, Status.DONE)
 
     def test_draft_to_done(self):
-        self._assert_raises(Project.Status.DRAFT, Project.Status.DONE)
+        self._assert_raises(Status.DRAFT, Status.DONE)
 
     def test_failed_to_review(self):
-        self._assert_raises(Project.Status.FAILED, Project.Status.REVIEW)
+        self._assert_raises(Status.FAILED, Status.REVIEW)

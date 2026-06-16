@@ -3,7 +3,7 @@ from django.db import models
 _TRANSITIONS = {
     "DRAFT": {"PLANNING"},
     "PLANNING": {"REVIEW", "FAILED"},
-    "REVIEW": {"GENERATING"},
+    "REVIEW": {"PLANNING", "GENERATING"},
     "GENERATING": {"DONE", "FAILED"},
     "FAILED": {"GENERATING"},
     "DONE": set(),

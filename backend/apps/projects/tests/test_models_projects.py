@@ -22,7 +22,7 @@ class ProjectFieldsTest(TestCase):
 
     def test_defaults(self):
         p = make_project()
-        self.assertEqual(p.status, Project.Status.DRAFT)
+        self.assertEqual(p.status, Status.DRAFT)
         self.assertIsNone(p.shot_plan)
         self.assertEqual(p.image_backend, "")
         self.assertFalse(p.animate)

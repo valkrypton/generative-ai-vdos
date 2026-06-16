@@ -2,6 +2,7 @@ from django.test import TestCase
 from django.db import IntegrityError
 from apps.accounts.models import UserProfile
 from apps.projects.models import Project, Scene
+from apps.projects.constants import ImageStatus
 
 
 def make_project():
@@ -17,7 +18,7 @@ class SceneTest(TestCase):
         s = Scene.objects.create(project=self.project, index=0)
         self.assertEqual(s.project, self.project)
         self.assertEqual(s.index, 0)
-        self.assertEqual(s.image_status, Scene.ImageStatus.PENDING)
+        self.assertEqual(s.image_status, ImageStatus.PENDING)
         self.assertEqual(s.image_path, "")
         self.assertEqual(s.image_provider, "")
 
