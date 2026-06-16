@@ -19,6 +19,15 @@ DEBUG = False
 
 ALLOWED_HOSTS: list[str] = []
 
+def env_csv(name, default=""):
+    """Comma-separated env var → list, dropping empty entries.
+
+    Avoids the "".split(",") == [""] footgun that yields an invalid
+    single-element host/origin list when the var is unset.
+    """
+    return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
+
+
 _COGNITO_VARS = (
     "COGNITO_DOMAIN",
     "COGNITO_APP_CLIENT_ID",
@@ -27,6 +36,14 @@ _COGNITO_VARS = (
     "COGNITO_LOGOUT_REDIRECT_URI",
 )
 COGNITO = {k: os.environ.get(k, "") for k in _COGNITO_VARS}
+
+
+def require_cognito():
+    """Raise if any COGNITO var is unset — called by non-test settings."""
+    missing = [k for k, v in COGNITO.items() if not v]
+    if missing:
+        from django.core.exceptions import ImproperlyConfigured
+        raise ImproperlyConfigured(f"Missing COGNITO env vars: {', '.join(missing)}")
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
@@ -69,6 +86,9 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS: list[str] = []
 
 REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "apps.accounts.authentication.CognitoSessionAuthentication",
+    ],
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
 }

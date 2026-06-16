@@ -1,32 +1,19 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from apps.accounts.models import UserProfile
 from .models import Project, Scene, JobLog
 from .serializers import ProjectSerializer, ProjectCreateSerializer, SceneSerializer, JobLogSerializer
 from .services import ProjectService
 
 
-def _get_owner(request) -> UserProfile:
-    sub = request.session.get("cognito_sub")
-    if not sub:
-        raise AuthenticationFailed("Not authenticated.")
-    try:
-        return UserProfile.objects.get(cognito_sub=sub)
-    except UserProfile.DoesNotExist:
-        raise AuthenticationFailed("User profile not found.")
-
-
 class ProjectViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
-        sub = self.request.session.get("cognito_sub")
-        if not sub:
-            return Project.objects.none()
         return (
-            Project.objects.filter(owner__cognito_sub=sub)
+            Project.objects.filter(owner=self.request.user)
             .prefetch_related("scenes")
             .order_by("-created_at")
         )
@@ -37,10 +24,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
         return ProjectSerializer
 
     def create(self, request, *args, **kwargs):
-        owner = _get_owner(request)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        project = ProjectService.create(owner=owner, **serializer.validated_data)
+        project = ProjectService.create(owner=request.user, **serializer.validated_data)
         return Response(ProjectSerializer(project).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["get"])
@@ -51,7 +37,11 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
 
 class SceneViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated]
     serializer_class = SceneSerializer
 
     def get_queryset(self):
-        return Scene.objects.filter(project_id=self.kwargs["project_pk"])
+        return Scene.objects.filter(
+            project_id=self.kwargs["project_pk"],
+            project__owner=self.request.user,
+        )

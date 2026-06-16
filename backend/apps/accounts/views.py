@@ -2,10 +2,10 @@ import secrets
 from django.contrib.auth import logout as django_logout
 from django.conf import settings
 from django.shortcuts import redirect
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from .cognito import build_authorize_url, exchange_code, build_logout_url, decode_id_token
-from .models import UserProfile
 from .serializers import UserProfileSerializer
 from .services import CognitoService
 
@@ -35,14 +35,23 @@ def callback(request):
         return Response({"error": "Token exchange failed"}, status=401)
 
     id_token = tokens.get("id_token", "")
-    claims = decode_id_token(id_token)
+    try:
+        claims = decode_id_token(id_token)
+    except Exception:
+        return Response({"error": "Invalid ID token"}, status=401)
+
+    sub = claims.get("sub")
+    if not sub:
+        return Response({"error": "ID token missing subject"}, status=401)
 
     CognitoService.get_or_create_profile(claims)
 
+    # Rotate the session key on login to prevent session fixation.
+    request.session.cycle_key()
     request.session["id_token"] = id_token
     request.session["access_token"] = tokens.get("access_token", "")
     request.session["refresh_token"] = tokens.get("refresh_token", "")
-    request.session["cognito_sub"] = claims.get("sub", "")
+    request.session["cognito_sub"] = sub
 
     return redirect(f"{settings.FRONTEND_URL}/dashboard")
 
@@ -54,12 +63,6 @@ def logout(request):
 
 
 @api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def me(request):
-    sub = request.session.get("cognito_sub")
-    if not sub:
-        return Response({"error": "Not authenticated"}, status=401)
-    try:
-        profile = UserProfile.objects.get(cognito_sub=sub)
-    except UserProfile.DoesNotExist:
-        return Response({"error": "Profile not found"}, status=404)
-    return Response(UserProfileSerializer(profile).data)
+    return Response(UserProfileSerializer(request.user).data)
