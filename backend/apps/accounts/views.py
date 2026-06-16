@@ -1,4 +1,5 @@
 import secrets
+from django.contrib.auth import logout as django_logout
 from django.conf import settings
 from django.shortcuts import redirect
 from rest_framework.decorators import api_view
@@ -37,5 +38,5 @@ def callback(request):
 
 @api_view(["POST"])
 def logout(request):
-    request.session.flush()
+    django_logout(request)
     return redirect(build_logout_url(settings.COGNITO))
