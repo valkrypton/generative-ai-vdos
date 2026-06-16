@@ -1,5 +1,10 @@
 import urllib.parse
 import requests
+from jose import jwt as jose_jwt
+
+
+def decode_id_token(token: str) -> dict:
+    return jose_jwt.get_unverified_claims(token)
 
 
 def build_authorize_url(config, state):

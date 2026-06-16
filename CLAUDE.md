@@ -104,6 +104,61 @@ changes by running stages against a copy of `examples/the-sharing-berry/` with
   ```
 - If it false-positives, fix the value/filename; `--no-verify` is a last resort, not a habit.
 
+## Web app (Django + Next.js)
+
+```bash
+make migrate       # run Django DB migrations (run once after clone or new migration)
+make backend       # Django dev server on :8000
+make frontend      # Next.js dev server on :3000 (separate terminal)
+make test          # Django test suite (discovers apps/*/tests/) + pipeline tests
+```
+
+Settings are split by environment (`backend/config/settings/`):
+- `base.py` — shared config
+- `development.py` — DEBUG=True, COGNITO validation, `CORS_ALLOWED_ORIGINS=localhost:3000`
+- `production.py` — secure cookies, HSTS, HTTPS redirect
+- `test.py` — dummy COGNITO values so tests run without real credentials
+
+`manage.py` auto-selects `test` settings when running `python manage.py test`, `production` in wsgi/asgi.
+
+### Backend layout
+
+```
+backend/
+  config/settings/       # split settings (base / development / production / test)
+  apps/
+    accounts/            # Cognito OAuth: login → callback → session; UserProfile model
+      cognito.py         # build_authorize_url, exchange_code, decode_id_token
+      services.py        # CognitoService.get_or_create_profile(claims)
+      serializers.py     # UserProfileSerializer
+    projects/            # Project / Scene / JobLog models + REST API
+      services.py        # ProjectService.create (transactional, logs first entry)
+      serializers.py     # ProjectSerializer, SceneSerializer, JobLogSerializer
+      views.py           # ProjectViewSet (scoped by session cognito_sub), SceneViewSet
+    health/              # GET /api/health/
+    core/                # TimestampMixin (abstract base for all models)
+```
+
+### Auth flow
+
+```
+GET  /api/auth/login      → redirect to Cognito hosted UI
+GET  /api/auth/callback   → exchange code → decode id_token → get_or_create UserProfile
+                            → store cognito_sub + tokens in session → redirect to /dashboard
+GET  /api/auth/me         → return UserProfile for session user (401 if not logged in)
+GET|POST /api/auth/logout → django_logout + redirect to Cognito logout
+```
+
+### Web app gotchas
+
+- **UserProfile is the FK anchor** — `cognito_sub` (Cognito's immutable user ID) links Cognito identity to all Django data. Never use email as a key; it can change.
+- **`decode_id_token` is unverified** — we trust the token because we fetched it server-side directly from Cognito's token endpoint over HTTPS. Full JWKS verification would be needed if clients ever send Bearer tokens directly.
+- **`CognitoService.get_or_create_profile` also syncs** — if a user updates their email/name in Cognito, the next login updates the local `UserProfile`.
+- **Tests use `config.settings.test`** — dummy COGNITO values are set there. Per-test Cognito overrides use `with self.settings(COGNITO=FAKE_COGNITO)`.
+- **Tests are co-located** — `apps/accounts/tests/`, `apps/projects/tests/`, `apps/health/tests/`. Run all with `python manage.py test apps`.
+- **`FRONTEND_URL` env var** — controls the redirect target after callback (default `http://localhost:3000`).
+- **Logout accepts GET and POST** — GET so a browser link works directly; POST for programmatic calls.
+
 ## Conventions
 
 - Python 3.13+ (use `X | None` union syntax, `match` statements, etc. freely).

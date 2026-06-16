@@ -1,3 +1,5 @@
+import base64
+import json
 from unittest.mock import patch, MagicMock
 from django.test import TestCase
 
@@ -10,8 +12,21 @@ FAKE_COGNITO = {
     "COGNITO_LOGOUT_REDIRECT_URI": "http://localhost:3000",
 }
 
+FAKE_ID_TOKEN_CLAIMS = {
+    "sub": "test-sub-123",
+    "email": "test@example.com",
+    "name": "Test User",
+}
+
+
+def _make_fake_jwt(claims: dict) -> str:
+    def b64url(obj):
+        return base64.urlsafe_b64encode(json.dumps(obj).encode()).rstrip(b"=").decode()
+    return f"{b64url({'alg': 'none'})}.{b64url(claims)}."
+
+
 FAKE_TOKENS = {
-    "id_token": "id.jwt.token",
+    "id_token": _make_fake_jwt(FAKE_ID_TOKEN_CLAIMS),
     "access_token": "access.jwt.token",
     "refresh_token": "refresh.token",
 }
@@ -57,8 +72,20 @@ class CallbackViewTest(TestCase):
                 "/api/auth/callback", {"code": "auth-code", "state": "my-state"}
             )
         self.assertEqual(resp.status_code, 302)
-        self.assertEqual(self.client.session.get("id_token"), "id.jwt.token")
+        self.assertEqual(self.client.session.get("id_token"), FAKE_TOKENS["id_token"])
         self.assertEqual(self.client.session.get("access_token"), "access.jwt.token")
+        self.assertEqual(self.client.session.get("cognito_sub"), FAKE_ID_TOKEN_CLAIMS["sub"])
+
+    def test_callback_creates_user_profile(self):
+        from apps.accounts.models import UserProfile
+        self._set_state("my-state")
+        with self.settings(COGNITO=FAKE_COGNITO), self._mock_exchange():
+            self.client.get(
+                "/api/auth/callback", {"code": "auth-code", "state": "my-state"}
+            )
+        self.assertTrue(
+            UserProfile.objects.filter(cognito_sub=FAKE_ID_TOKEN_CLAIMS["sub"]).exists()
+        )
 
     def test_state_mismatch_returns_400(self):
         self._set_state("expected-state")
@@ -98,18 +125,23 @@ class LogoutViewTest(TestCase):
 
     def test_logout_clears_session(self):
         with self.settings(COGNITO=FAKE_COGNITO):
-            self.client.post("/api/auth/logout")
+            self.client.get("/api/auth/logout")
         self.assertNotIn("id_token", self.client.session)
         self.assertNotIn("access_token", self.client.session)
 
     def test_logout_redirects_to_cognito(self):
         with self.settings(COGNITO=FAKE_COGNITO):
-            resp = self.client.post("/api/auth/logout")
+            resp = self.client.get("/api/auth/logout")
         self.assertEqual(resp.status_code, 302)
         self.assertIn(FAKE_COGNITO["COGNITO_DOMAIN"], resp["Location"])
         self.assertIn("/logout", resp["Location"])
 
     def test_logout_contains_client_id(self):
         with self.settings(COGNITO=FAKE_COGNITO):
-            resp = self.client.post("/api/auth/logout")
+            resp = self.client.get("/api/auth/logout")
         self.assertIn("client_id=client-abc", resp["Location"])
+
+    def test_logout_accepts_post(self):
+        with self.settings(COGNITO=FAKE_COGNITO):
+            resp = self.client.post("/api/auth/logout")
+        self.assertEqual(resp.status_code, 302)

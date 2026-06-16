@@ -284,6 +284,67 @@ Drop royalty-free mp3s into `music/<mood>/` — the assembler picks one matching
 | Wan: `no video backend configured` | Set `DASHSCOPE_API_KEY`; free credit requires a Singapore-region Model Studio account |
 | Stage re-runs do nothing (`pipeline.run`) | Stage already in `state.json` `done` list — remove it there |
 
+## Web app
+
+A Django + Next.js interface for creating and managing video projects through a browser.
+
+### Setup
+
+```bash
+make install-web       # install Python webapp deps + scaffold Next.js (run once)
+make migrate           # create the database tables
+make backend           # Django API on :8000
+make frontend          # Next.js on :3000 (separate terminal)
+```
+
+Additional env vars needed in `.env`:
+
+| Variable | Description |
+|---|---|
+| `COGNITO_DOMAIN` | Cognito hosted UI domain, e.g. `https://mypool.auth.us-east-1.amazoncognito.com` |
+| `COGNITO_APP_CLIENT_ID` | App client ID from Cognito |
+| `COGNITO_APP_CLIENT_SECRET` | App client secret from Cognito |
+| `COGNITO_REDIRECT_URI` | `http://localhost:8000/api/auth/callback` |
+| `COGNITO_LOGOUT_REDIRECT_URI` | `http://localhost:3000` |
+| `FRONTEND_URL` | `http://localhost:3000` (default if omitted) |
+| `DJANGO_SECRET_KEY` | Any random string for dev; required in production |
+
+### Auth flow
+
+Authentication is delegated entirely to AWS Cognito (registration, email verification, password reset all happen there). Django only handles the OAuth callback and session.
+
+```
+Browser → GET /api/auth/login  → Cognito hosted UI
+Cognito → GET /api/auth/callback?code=... → Django creates session + UserProfile
+Browser → GET /api/auth/me     → returns { id, email, name }
+Browser → GET /api/auth/logout → clears session + Cognito logout
+```
+
+### API endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/health/` | Health check |
+| `GET` | `/api/auth/login` | Redirect to Cognito login |
+| `GET` | `/api/auth/callback` | OAuth callback (Cognito → session) |
+| `GET` | `/api/auth/me` | Current user profile |
+| `GET\|POST` | `/api/auth/logout` | Clear session + Cognito logout |
+| `GET` | `/api/projects/` | List current user's projects |
+| `POST` | `/api/projects/` | Create a project |
+| `GET` | `/api/projects/{id}/` | Project detail |
+| `PATCH` | `/api/projects/{id}/` | Update project |
+| `DELETE` | `/api/projects/{id}/` | Delete project |
+| `GET` | `/api/projects/{id}/logs/` | Pipeline job logs for a project |
+| `GET` | `/api/projects/{id}/scenes/` | Scenes for a project |
+
+### Running tests
+
+```bash
+make test         # full suite (Django + pipeline)
+# or just Django:
+source .venv/bin/activate && cd backend && python manage.py test apps
+```
+
 ## Not yet built
 
 - YouTube upload (Data API + OAuth)

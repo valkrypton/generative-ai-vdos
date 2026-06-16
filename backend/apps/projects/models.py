@@ -6,6 +6,8 @@ from apps.accounts.models import UserProfile
 
 
 class Project(TimestampMixin):
+    Status = Status
+    ImageStatus = ImageStatus
 
     id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     owner          = models.ForeignKey(
@@ -42,6 +44,8 @@ class Project(TimestampMixin):
 
 
 class Scene(TimestampMixin):
+    ImageStatus = ImageStatus
+
     project        = models.ForeignKey(
         Project, on_delete=models.CASCADE, related_name="scenes"
     )
