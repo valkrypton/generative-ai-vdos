@@ -1,25 +1,11 @@
 import uuid
 from django.db import models
+from apps.core.models import TimestampMixin
+from apps.projects.constants import NarratorVoice, MusicMood, Stage, Level, ImageStatus, _TRANSITIONS, Status
 from apps.users.models import UserProfile
 
-_TRANSITIONS = {
-    "DRAFT":      {"PLANNING"},
-    "PLANNING":   {"REVIEW", "FAILED"},
-    "REVIEW":     {"GENERATING"},
-    "GENERATING": {"DONE", "FAILED"},
-    "FAILED":     {"GENERATING"},
-    "DONE":       set(),
-}
 
-
-class Project(models.Model):
-    class Status(models.TextChoices):
-        DRAFT      = "DRAFT"
-        PLANNING   = "PLANNING"
-        REVIEW     = "REVIEW"
-        GENERATING = "GENERATING"
-        DONE       = "DONE"
-        FAILED     = "FAILED"
+class Project(TimestampMixin):
 
     id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     owner          = models.ForeignKey(
@@ -33,12 +19,14 @@ class Project(models.Model):
     shot_plan      = models.JSONField(null=True, blank=True)
     image_backend  = models.CharField(max_length=50, blank=True, default="")
     animate        = models.BooleanField(default=False)
-    narrator_voice = models.CharField(max_length=100, blank=True, default="")
-    music          = models.CharField(max_length=200, blank=True, default="")
+    narrator_voice = models.CharField(
+        max_length=100, choices=NarratorVoice, blank=True, default=NarratorVoice.ANDREW
+    )
+    music          = models.CharField(
+        max_length=200, choices=MusicMood ,blank=True, default=MusicMood.CALM
+    )
     error          = models.TextField(blank=True, default="")
     stale          = models.BooleanField(default=False)
-    created_at     = models.DateTimeField(auto_now_add=True)
-    updated_at     = models.DateTimeField(auto_now=True)
 
     def transition_status(self, new_status):
         allowed = _TRANSITIONS.get(self.status, set())
@@ -53,13 +41,7 @@ class Project(models.Model):
         return f"Project({self.id}, {self.status})"
 
 
-class Scene(models.Model):
-    class ImageStatus(models.TextChoices):
-        PENDING = "PENDING"
-        RUNNING = "RUNNING"
-        DONE    = "DONE"
-        FAILED  = "FAILED"
-
+class Scene(TimestampMixin):
     project        = models.ForeignKey(
         Project, on_delete=models.CASCADE, related_name="scenes"
     )
@@ -75,17 +57,11 @@ class Scene(models.Model):
         ordering = ["index"]
 
 
-class JobLog(models.Model):
-    class Level(models.TextChoices):
-        INFO  = "info"
-        WARN  = "warn"
-        ERROR = "error"
-
+class JobLog(TimestampMixin):
     project    = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="logs")
-    stage      = models.CharField(max_length=50)
+    stage      = models.CharField(max_length=10, choices=Stage.choices)
     level      = models.CharField(max_length=10, choices=Level.choices, default=Level.INFO)
     message    = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["created_at"]

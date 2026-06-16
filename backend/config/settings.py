@@ -15,6 +15,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "apps.health",
+    "apps.core",
     "apps.users",
     "apps.projects",
 ]
