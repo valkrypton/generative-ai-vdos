@@ -1,23 +1,5 @@
-import os
 import urllib.parse
 import requests
-from django.core.exceptions import ImproperlyConfigured
-
-_REQUIRED_VARS = (
-    "COGNITO_DOMAIN",
-    "COGNITO_APP_CLIENT_ID",
-    "COGNITO_APP_CLIENT_SECRET",
-    "COGNITO_REDIRECT_URI",
-    "COGNITO_LOGOUT_REDIRECT_URI",
-)
-
-
-def get_config():
-    config = {k: os.environ.get(k, "") for k in _REQUIRED_VARS}
-    missing = [k for k, v in config.items() if not v]
-    if missing:
-        raise ImproperlyConfigured(f"Missing COGNITO env vars: {', '.join(missing)}")
-    return config
 
 
 def build_authorize_url(config, state):

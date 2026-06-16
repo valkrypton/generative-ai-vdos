@@ -1,9 +1,8 @@
-import os
 from unittest.mock import patch, MagicMock
 from django.test import TestCase
 
 
-FAKE_ENV = {
+FAKE_COGNITO = {
     "COGNITO_DOMAIN": "https://example.auth.us-east-1.amazoncognito.com",
     "COGNITO_APP_CLIENT_ID": "client-abc",
     "COGNITO_APP_CLIENT_SECRET": "secret-xyz",
@@ -20,20 +19,20 @@ FAKE_TOKENS = {
 
 class LoginViewTest(TestCase):
     def test_redirects_to_cognito(self):
-        with patch.dict(os.environ, FAKE_ENV):
+        with self.settings(COGNITO=FAKE_COGNITO):
             resp = self.client.get("/api/auth/login")
         self.assertEqual(resp.status_code, 302)
-        self.assertIn(FAKE_ENV["COGNITO_DOMAIN"], resp["Location"])
+        self.assertIn(FAKE_COGNITO["COGNITO_DOMAIN"], resp["Location"])
         self.assertIn("/oauth2/authorize", resp["Location"])
 
     def test_state_stored_in_session(self):
-        with patch.dict(os.environ, FAKE_ENV):
+        with self.settings(COGNITO=FAKE_COGNITO):
             self.client.get("/api/auth/login")
         self.assertIn("cognito_state", self.client.session)
         self.assertTrue(len(self.client.session["cognito_state"]) > 10)
 
     def test_redirect_contains_client_id(self):
-        with patch.dict(os.environ, FAKE_ENV):
+        with self.settings(COGNITO=FAKE_COGNITO):
             resp = self.client.get("/api/auth/login")
         self.assertIn("client_id=client-abc", resp["Location"])
 
@@ -49,11 +48,11 @@ class CallbackViewTest(TestCase):
         mock_resp.ok = return_value is not None
         if return_value:
             mock_resp.json.return_value = return_value
-        return patch("apps.auth_oidc.cognito.requests.post", return_value=mock_resp)
+        return patch("apps.accounts.cognito.requests.post", return_value=mock_resp)
 
     def test_valid_code_sets_session_and_redirects(self):
         self._set_state("my-state")
-        with patch.dict(os.environ, FAKE_ENV), self._mock_exchange():
+        with self.settings(COGNITO=FAKE_COGNITO), self._mock_exchange():
             resp = self.client.get(
                 "/api/auth/callback", {"code": "auth-code", "state": "my-state"}
             )
@@ -75,7 +74,7 @@ class CallbackViewTest(TestCase):
 
     def test_failed_exchange_returns_401(self):
         self._set_state("my-state")
-        with patch.dict(os.environ, FAKE_ENV), self._mock_exchange(return_value=None):
+        with self.settings(COGNITO=FAKE_COGNITO), self._mock_exchange(return_value=None):
             resp = self.client.get(
                 "/api/auth/callback", {"code": "bad-code", "state": "my-state"}
             )
@@ -83,7 +82,7 @@ class CallbackViewTest(TestCase):
 
     def test_state_consumed_after_callback(self):
         self._set_state("my-state")
-        with patch.dict(os.environ, FAKE_ENV), self._mock_exchange():
+        with self.settings(COGNITO=FAKE_COGNITO), self._mock_exchange():
             self.client.get(
                 "/api/auth/callback", {"code": "code", "state": "my-state"}
             )
@@ -98,19 +97,19 @@ class LogoutViewTest(TestCase):
         session.save()
 
     def test_logout_clears_session(self):
-        with patch.dict(os.environ, FAKE_ENV):
+        with self.settings(COGNITO=FAKE_COGNITO):
             self.client.post("/api/auth/logout")
         self.assertNotIn("id_token", self.client.session)
         self.assertNotIn("access_token", self.client.session)
 
     def test_logout_redirects_to_cognito(self):
-        with patch.dict(os.environ, FAKE_ENV):
+        with self.settings(COGNITO=FAKE_COGNITO):
             resp = self.client.post("/api/auth/logout")
         self.assertEqual(resp.status_code, 302)
-        self.assertIn(FAKE_ENV["COGNITO_DOMAIN"], resp["Location"])
+        self.assertIn(FAKE_COGNITO["COGNITO_DOMAIN"], resp["Location"])
         self.assertIn("/logout", resp["Location"])
 
     def test_logout_contains_client_id(self):
-        with patch.dict(os.environ, FAKE_ENV):
+        with self.settings(COGNITO=FAKE_COGNITO):
             resp = self.client.post("/api/auth/logout")
         self.assertIn("client_id=client-abc", resp["Location"])

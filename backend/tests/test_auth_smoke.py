@@ -9,6 +9,6 @@ class SessionSmokeTest(TestCase):
             settings.MIDDLEWARE,
         )
 
-    def test_auth_oidc_app_registered(self):
+    def test_accounts_app_registered(self):
         from django.apps import apps
-        self.assertIn("auth_oidc", [a.label for a in apps.get_app_configs()])
+        self.assertIn("accounts", [a.label for a in apps.get_app_configs()])

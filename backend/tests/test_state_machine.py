@@ -1,6 +1,6 @@
 import uuid as _uuid
 from django.test import TestCase
-from apps.users.models import UserProfile
+from apps.accounts.models import UserProfile
 from apps.projects.models import Project
 
 

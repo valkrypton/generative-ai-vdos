@@ -2,7 +2,7 @@ import uuid
 from django.db import models
 from apps.core.models import TimestampMixin
 from apps.projects.constants import NarratorVoice, MusicMood, Stage, Level, ImageStatus, _TRANSITIONS, Status
-from apps.users.models import UserProfile
+from apps.accounts.models import UserProfile
 
 
 class Project(TimestampMixin):

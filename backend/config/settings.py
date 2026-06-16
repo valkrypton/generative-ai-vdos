@@ -21,6 +21,19 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() == "true"
 
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
+_COGNITO_VARS = (
+    "COGNITO_DOMAIN",
+    "COGNITO_APP_CLIENT_ID",
+    "COGNITO_APP_CLIENT_SECRET",
+    "COGNITO_REDIRECT_URI",
+    "COGNITO_LOGOUT_REDIRECT_URI",
+)
+COGNITO = {k: os.environ.get(k, "") for k in _COGNITO_VARS}
+_cognito_missing = [k for k, v in COGNITO.items() if not v]
+if _cognito_missing:
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured(f"Missing COGNITO env vars: {', '.join(_cognito_missing)}")
+
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.auth",
@@ -29,9 +42,8 @@ INSTALLED_APPS = [
     "corsheaders",
     "apps.health",
     "apps.core",
-    "apps.users",
+    "apps.accounts",
     "apps.projects",
-    "apps.auth_oidc",
 ]
 
 MIDDLEWARE = [

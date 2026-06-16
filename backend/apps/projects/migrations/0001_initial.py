@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ("users", "0001_initial"),
+        ("accounts", "0001_initial"),
     ]
 
     operations = [
@@ -59,7 +59,7 @@ class Migration(migrations.Migration):
                         db_index=True,
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="projects",
-                        to="users.userprofile",
+                        to="accounts.userprofile",
                     ),
                 ),
             ],

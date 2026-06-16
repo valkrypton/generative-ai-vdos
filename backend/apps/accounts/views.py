@@ -1,14 +1,14 @@
 import secrets
+from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import redirect
-from .cognito import get_config, build_authorize_url, exchange_code, build_logout_url
+from .cognito import build_authorize_url, exchange_code, build_logout_url
 
 
 def login(request):
-    config = get_config()
     state = secrets.token_urlsafe(32)
     request.session["cognito_state"] = state
-    return redirect(build_authorize_url(config, state))
+    return redirect(build_authorize_url(settings.COGNITO, state))
 
 
 def callback(request):
@@ -22,8 +22,7 @@ def callback(request):
     if not code:
         return JsonResponse({"error": "Missing authorization code"}, status=400)
 
-    config = get_config()
-    tokens = exchange_code(config, code)
+    tokens = exchange_code(settings.COGNITO, code)
     if tokens is None:
         return JsonResponse({"error": "Token exchange failed"}, status=401)
 
@@ -34,6 +33,5 @@ def callback(request):
 
 
 def logout(request):
-    config = get_config()
     request.session.flush()
-    return redirect(build_logout_url(config))
+    return redirect(build_logout_url(settings.COGNITO))

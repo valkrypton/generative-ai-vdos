@@ -1,6 +1,6 @@
 from django.test import TestCase
 from django.db import IntegrityError
-from apps.users.models import UserProfile
+from apps.accounts.models import UserProfile
 
 
 class UserProfileTest(TestCase):
