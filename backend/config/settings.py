@@ -1,7 +1,19 @@
 import os
+import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Auto-load .env from repo root (same loader the CLI pipeline uses).
+# Real env vars always win; empty placeholder values are ignored.
+_repo_root = BASE_DIR.parent
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+try:
+    from pipeline.env import load_env
+    load_env()
+except ImportError:
+    pass  # pipeline package not installed — rely on real env vars
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-insecure-key-change-in-prod")
 
@@ -12,17 +24,20 @@ ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").sp
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.auth",
+    "django.contrib.sessions",
     "rest_framework",
     "corsheaders",
     "apps.health",
     "apps.core",
     "apps.users",
     "apps.projects",
+    "apps.auth_oidc",
 ]
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
 ]
 
@@ -37,6 +52,12 @@ DATABASES = {
         "NAME": BASE_DIR / "db.sqlite3",
     }
 }
+
+# Sessions — DB-backed, HttpOnly, SameSite=Lax
+SESSION_ENGINE = "django.contrib.sessions.backends.db"
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SECURE = not DEBUG  # True in prod (HTTPS)
 
 # CORS — allow Next.js dev server
 CORS_ALLOWED_ORIGINS = os.environ.get(
