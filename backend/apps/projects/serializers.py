@@ -5,8 +5,8 @@ from .models import Project, Scene, JobLog
 class SceneSerializer(serializers.ModelSerializer):
     class Meta:
         model = Scene
-        fields = ["id", "index", "image_path", "image_status", "image_provider", "created_at", "updated_at"]
-        read_only_fields = ["id", "index", "image_path", "image_status", "image_provider", "created_at", "updated_at"]
+        fields = ["id", "index", "media_path", "image_status", "image_provider", "created_at", "updated_at"]
+        read_only_fields = ["id", "index", "media_path", "image_status", "image_provider", "created_at", "updated_at"]
 
 
 class JobLogSerializer(serializers.ModelSerializer):
