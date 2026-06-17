@@ -9,3 +9,7 @@ SESSION_COOKIE_SECURE = False
 CORS_ALLOWED_ORIGINS = env_csv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
 
 require_cognito()
+
+# Celery: run tasks synchronously in-process (no Redis required locally)
+CELERY_TASK_ALWAYS_EAGER = True
+CELERY_TASK_EAGER_PROPAGATES = True
