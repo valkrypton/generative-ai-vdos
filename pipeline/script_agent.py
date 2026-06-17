@@ -63,11 +63,35 @@ RIGHT (locked once, identical in every scene):
 DESCRIPTION RULES:
 - Description = visual identity only: colors, shape, materials, markings, clothing.
   NEVER include pose, action, emotion — those go in image_prompt.
+- NEVER use size comparisons to other characters or animals (e.g. "the size of a small
+  bird") — the image model will draw the compared thing. Use absolute terms only
+  (e.g. "oversized", "the size of a fist", "tiny", "enormous").
 - Be specific. WEAK: "an Argentina flag". STRONG: see example above.
+- For objects (food, props, treasures): name the EXACT type, never generic terms.
+  WEAK: "a red berry, round and glossy" (model could draw apple, pomegranate, cherry).
+  STRONG: "a giant bright red strawberry with visible seeds, a green leafy top,
+  and a teardrop shape". Include shape, texture, and distinguishing features.
 - Always use {placeholder} — never write the description inline, never use
   "he"/"she"/"the flag"/"the man". Always {placeholder}.
 - For national flags: always include stripe direction, exact colors, and central emblem.
 - For people: age range, hair color/style, skin tone, every clothing item with color.
+
+OUTFITS (when a character's clothing changes mid-story):
+- If a character wears the same clothes the whole video, just put everything in
+  description as usual. Do NOT use outfits for single-outfit characters.
+- If a character changes clothes mid-story (gift, costume change, transformation),
+  set outfits on that character: a dict mapping outfit name to a COMPLETE visual
+  description (identity + clothing). The default look stays in description.
+  Example:
+    "description": "a 6-year-old boy with messy brown hair, round face, big hazel eyes,
+     wearing a plain white t-shirt and grey shorts"
+    "outfits": {"superhero": "a 6-year-old boy with messy brown hair, round face, big
+     hazel eyes, wearing a red Superman t-shirt and blue jeans"}
+- On each scene AFTER the change, set outfit: {"boy": "superhero"}.
+  Scenes without outfit use the default description automatically.
+- CRITICAL: every outfit value must repeat the full identity (face, hair, build, skin)
+  from description — only change the clothing. The image model has never seen the other
+  scenes, so it needs the complete look every time.
 
 CHARACTER NEGATIVE (negative field on each character — critical for unusual traits):
 - Set the character's negative field for any trait the image model tends to add wrongly.
@@ -76,6 +100,12 @@ CHARACTER NEGATIVE (negative field on each character — critical for unusual tr
 - Clean-shaven character → negative: "beard, mustache, stubble, facial hair"
 - This negative is automatically injected into EVERY scene the character appears in,
   so you never have to remember to add it per scene.
+
+IS_INANIMATE FLAG:
+- Set is_inanimate=true on any character that is NOT a person or animal: food, props,
+  landmarks, vehicles, treasures, flags, buildings. Leave it false (default) for people
+  and animals. This controls how the pipeline generates reference images (product-style
+  shot vs portrait pose).
 
 GLOBAL NEGATIVE: Always set global_negative on the plan with video-wide rules:
 - Videos with people: "changing hairstyle, inconsistent clothing, different face, extra limbs, text, watermark, blurry"
@@ -146,7 +176,8 @@ def default_model() -> str:
     return model
 
 
-def _parse_with_llm(user_content: str, model: str) -> ShotPlan:
+def _parse_with_llm(user_content: str, model: str, system_extra: str | None = None) -> ShotPlan:
+    system = SYSTEM if not system_extra else f"{SYSTEM}\n\n{system_extra}"
     if model.startswith("claude"):
         import anthropic
 
@@ -154,7 +185,7 @@ def _parse_with_llm(user_content: str, model: str) -> ShotPlan:
         response = client.messages.parse(
             model=model,
             max_tokens=8192,
-            system=SYSTEM,
+            system=system,
             messages=[{"role": "user", "content": user_content}],
             output_format=ShotPlan,
         )
@@ -170,7 +201,7 @@ def _parse_with_llm(user_content: str, model: str) -> ShotPlan:
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
             api_key=key,
         )
-        return _parse_json_mode(client, model, user_content)
+        return _parse_json_mode(client, model, user_content, system=system)
 
     if model.startswith("gpt"):
         # native OpenAI — strict json_schema parse is reliable here
@@ -178,7 +209,7 @@ def _parse_with_llm(user_content: str, model: str) -> ShotPlan:
         completion = client.chat.completions.parse(
             model=model,
             messages=[
-                {"role": "system", "content": SYSTEM},
+                {"role": "system", "content": system},
                 {"role": "user", "content": user_content},
             ],
             response_format=ShotPlan,
@@ -193,7 +224,7 @@ def _parse_with_llm(user_content: str, model: str) -> ShotPlan:
             "set it in .env or use a gpt-*/claude-* model")
     base = (os.environ.get("LITELLM_BASE_URL") or "https://litellm.arbisoft.com").rstrip("/")
     client = OpenAI(base_url=base, api_key=key)
-    return _parse_json_mode(client, model, user_content)
+    return _parse_json_mode(client, model, user_content, system=system)
 
 
 # JSON schema embedded in the prompt for proxy models. Groq/Cerebras enforce
@@ -207,9 +238,10 @@ _SCHEMA_HINT = (
 )
 
 
-def _parse_json_mode(client, model: str, user_content: str, tries: int = 3) -> ShotPlan:
+def _parse_json_mode(client, model: str, user_content: str, tries: int = 3,
+                     system: str = SYSTEM) -> ShotPlan:
     messages = [
-        {"role": "system", "content": SYSTEM + "\n\n" + _SCHEMA_HINT},
+        {"role": "system", "content": system + "\n\n" + _SCHEMA_HINT},
         {"role": "user", "content": user_content},
     ]
     last_err = None
@@ -236,8 +268,10 @@ def _parse_json_mode(client, model: str, user_content: str, tries: int = 3) -> S
         f"model '{model}' did not return a valid shot plan after {tries} tries: {last_err}")
 
 
-def generate_shot_plan(topic: str, model: str = "claude-haiku-4-5") -> ShotPlan:
-    return _parse_with_llm(f"Topic / rough script:\n\n{topic}", model)
+def generate_shot_plan(topic: str, model: str = "claude-haiku-4-5", style: dict | None = None) -> ShotPlan:
+    from .styles import inject_style_instruction
+    style_extra = inject_style_instruction(style) if style else None
+    return _parse_with_llm(f"Topic / rough script:\n\n{topic}", model, system_extra=style_extra)
 
 
 def polish_image_prompts(plan: ShotPlan, model: str = "claude-haiku-4-5") -> ShotPlan:
@@ -271,10 +305,30 @@ def consistency_review(plan: ShotPlan, model: str = "claude-haiku-4-5") -> ShotP
         "   - White-haired character → must include: 'dark hair, black hair, brown hair'\n"
         "   - Clean-shaven character → must include: 'beard, mustache, stubble'\n"
         "   - National flag → must include: 'wrong colors, altered design, incorrect emblem'\n"
-        "   - All other characters → set negative to: 'beard, mustache, different person'\n"
+        "   - Inanimate prop (food, landmark, vehicle, treasure — does NOT speak or "
+        "show emotion in the story) → must set is_inanimate=true AND negative must include: "
+        "'face, eyes, mouth, anthropomorphic, cartoon face, human features'\n"
+        "   - Anthropomorphic object (talks, shows emotion, acts like a character in the "
+        "story) → is_inanimate=false, treat like a person/animal, do NOT add anti-face "
+        "negatives. Include facial features in the description instead.\n"
+        "   - All other characters (people/animals) → is_inanimate=false, set negative to: "
+        "'beard, mustache, different person'\n"
         "   Never leave negative as null or 'none'.\n\n"
-        "4. ANIMATE CAP: At most 2 scenes may have animate=true. If more than 2 are set, "
+        "4. VAGUE OBJECT DESCRIPTIONS: If any non-person character (food, prop, treasure) "
+        "uses a generic term (e.g. 'red berry', 'a fruit', 'a gem'), rewrite the description "
+        "to name the exact type with shape, texture, and distinguishing features "
+        "(e.g. 'a giant bright red strawberry with visible seeds, a green leafy top, "
+        "and a teardrop shape').\n\n"
+        "5. SIZE COMPARISONS: If any character description uses a size comparison to another "
+        "character or animal (e.g. 'the size of a small bird', 'as big as a cat'), rewrite it "
+        "using absolute terms only (e.g. 'oversized', 'palm-sized', 'enormous'). The image "
+        "model will draw the compared thing.\n\n"
+        "6. ANIMATE CAP: At most 2 scenes may have animate=true. If more than 2 are set, "
         "set the least important ones back to false.\n\n"
+        "7. OUTFIT CONSISTENCY: If a character has outfits defined, verify that every "
+        "outfit value repeats the full identity (face, hair, build, skin) from the "
+        "character's description — only clothing should differ. Also verify that every "
+        "scene after a clothing change sets the outfit field correctly.\n\n"
         "Return the COMPLETE corrected plan with ALL fields intact. "
         "Only change what the checks above require.",
         model,

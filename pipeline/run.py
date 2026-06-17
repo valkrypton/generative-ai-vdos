@@ -76,10 +76,16 @@ def main() -> None:
                              "pipeline/video: wan-i2v); implies --animate")
     parser.add_argument("--until", choices=STAGES, default=None,
                         help="Stop after this stage (step-by-step runs)")
+    parser.add_argument("--style", default=os.environ.get("VIDEO_STYLE"),
+                        help="Style preset name, 'list' to show all, or "
+                             "'custom:your description' (.env: VIDEO_STYLE)")
     args = parser.parse_args()
     if not args.model:
         from .script_agent import default_model
         args.model = default_model()  # errors if LLM_PROVIDER not set
+
+    from .styles import resolve_style
+    style = resolve_style(args.style)
 
     work_dir = Path(args.out) / (args.name or slugify(args.topic))
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -90,7 +96,7 @@ def main() -> None:
     if "plan" not in state["done"]:
         from .script_agent import consistency_review, generate_shot_plan, polish_image_prompts
         print(f"stage: plan ({args.model})")
-        plan = generate_shot_plan(args.topic, model=args.model)
+        plan = generate_shot_plan(args.topic, model=args.model, style=style)
         plan_file.write_text(plan.model_dump_json(indent=2))
         print(f"  polishing image prompts ({args.model})...")
         plan = polish_image_prompts(plan, model=args.model)

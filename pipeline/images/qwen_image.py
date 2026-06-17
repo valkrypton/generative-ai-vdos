@@ -92,7 +92,8 @@ class QwenImageProvider(ImageProvider):
                                 + (f", {negative}" if negative else "")),
         })
 
-    def edit(self, prompt: str, reference, path: Path) -> None:
+    def edit(self, prompt: str, reference, path: Path,
+             negative: Optional[str] = None) -> None:
         """Re-render to match prompt while keeping the subject(s) looking the same
         (face, hair, clothing). `reference` is a single Path or a list of Paths
         (up to 3, for multi-character scenes). Free on the qwen-image-2.0 quota."""
@@ -101,9 +102,12 @@ class QwenImageProvider(ImageProvider):
                     + base64.b64encode(Path(r).read_bytes()).decode()}
                    for r in refs[:MAX_REFS]]
         content.append({"text": prompt[:MAX_PROMPT]})
+        neg = ("text, words, captions, typography, letters, "
+               "watermark, logo, subtitles"
+               + (f", {negative}" if negative else ""))
         self._post(_edit_model(), content, path, {
             "n": 1,
             "prompt_extend": False,
             "watermark": False,
-            "negative_prompt": "text, words, captions, typography, letters, watermark, logo, subtitles",
+            "negative_prompt": neg,
         })
