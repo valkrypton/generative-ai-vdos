@@ -1,11 +1,9 @@
 import { Suspense } from 'react'
-import dynamic from 'next/dynamic'
-import { Button } from '@base-ui/react'
+import { Button } from '@/components/ui/button'
 import ProjectsSection from "@/components/home/project-section";
 import CreateVideoSection from "@/components/home/create-video-section";
+import WelcomeBanner from "@/components/home/welcome";
 import WelcomeSkeleton from "@/components/home/welcome-skeleton";
-
-const WelcomeBanner = dynamic(() => import('components/home/welcome'))
 
 export default function HomePage() {
   return (

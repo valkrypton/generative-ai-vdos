@@ -163,8 +163,8 @@ webapp/
       layout.tsx             # async Server Component: calls getUser(), redirects to /login on 401
       home/
         page.tsx             # /home — welcome banner, create video section, project list
-        _welcome-banner.tsx  # async Server Component — calls getUser() (deduplicated via React.cache)
   components/
+    home/welcome.tsx         # async Server Component — calls getUser() (deduplicated via React.cache)
     header.tsx               # 'use client' — receives email/name as props from (home)/layout
     login-screen.tsx         # static login card with href to /api/auth/login
   lib/
@@ -190,7 +190,7 @@ skills, if they're available.**
 - **`CognitoService.get_or_create_profile` also syncs** — if a user updates their email/name in Cognito, the next login updates the local `UserProfile`.
 - **Tests use `config.settings.test`** — dummy COGNITO values are set there. Per-test Cognito overrides use `with self.settings(COGNITO=FAKE_COGNITO)`.
 - **Tests are co-located** — `apps/accounts/tests/`, `apps/projects/tests/`, `apps/health/tests/`. Run all with `python manage.py test apps`.
-- **`FRONTEND_URL` env var** — controls the redirect target after callback (default `http://localhost:3000`). Must point to `/home` after login.
+- **`FRONTEND_URL` env var** — set this to your frontend origin (default `http://localhost:3000`); the backend callback appends `/home`.
 - **Logout accepts GET and POST** — GET so a browser link works directly; POST for programmatic calls.
 - **`sessionid` cookie is opaque** — just a session key; actual user data (tokens, sub) lives in Django's session store server-side. Next.js server-side fetch to `/api/auth/me` is the only way to get user data.
 - **`/api/*` rewrites are browser-only** — `next.config.mjs` rewrites proxy browser requests to Django. Server-side fetches in Server Components must use the full `http://localhost:8000` URL directly.

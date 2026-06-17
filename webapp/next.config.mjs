@@ -1,10 +1,12 @@
 /** @type {import('next').NextConfig} */
+const djangoOrigin = (process.env.DJANGO_ORIGIN ?? 'http://localhost:8000').replace(/\/$/, '')
+
 const nextConfig = {
   async rewrites() {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:8000/api/:path*',
+        destination: `${djangoOrigin}/api/:path*`,
       },
     ]
   },

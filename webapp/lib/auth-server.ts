@@ -1,6 +1,8 @@
 import { cache } from 'react'
 import { cookies } from 'next/headers'
 
+const DJANGO_ORIGIN = (process.env.DJANGO_ORIGIN ?? 'http://localhost:8000').replace(/\/$/, '')
+
 export interface UserProfile {
   id: number
   cognito_sub: string
@@ -14,10 +16,13 @@ export const getUser = cache(async (): Promise<UserProfile | null> => {
   const session = cookieStore.get('sessionid')
   if (!session) return null
 
-  const res = await fetch('http://localhost:8000/api/auth/me', {
+  const res = await fetch(`${DJANGO_ORIGIN}/api/auth/me`, {
     headers: { Cookie: `sessionid=${session.value}` },
     cache: 'no-store',
   })
-  if (!res.ok) return null
+  if (res.status === 401 || res.status === 403) return null
+  if (!res.ok) {
+    throw new Error(`Failed to fetch user profile: ${res.status} ${res.statusText}`)
+  }
   return res.json() as Promise<UserProfile>
 })

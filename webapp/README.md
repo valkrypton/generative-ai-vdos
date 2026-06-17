@@ -46,8 +46,8 @@ app/
   (home)/
     layout.tsx                 # async auth gate + Header
     home/page.tsx              # /home page
-    home/_welcome-banner.tsx   # async Server Component, calls getUser()
 components/
+  home/welcome.tsx             # async Server Component, calls getUser()
   header.tsx                   # sticky header — 'use client' for logout only; gets user as props
   login-screen.tsx             # login card with href to /api/auth/login
 lib/
