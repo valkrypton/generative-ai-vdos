@@ -140,7 +140,7 @@ class ShotPlan(BaseModel):
             found.sort()
         return [name for _, name in found]
 
-    def expand(self, text: str, max_chars: int = MAX_PROMPT_CHARS, scene_outfit: dict[str, str] | None = None) -> str:
+    def expand(self, text: str, max_chars: int = MAX_PROMPT_CHARS, scene_outfit: dict[str, str] | None = None, *, include_style_overhead: bool = False) -> str:
         """Replace character references with their full descriptions.
 
         Matches both {name} placeholders and bare names (word-boundary,
@@ -154,10 +154,17 @@ class ShotPlan(BaseModel):
         When 3+ characters appear and the fully-expanded text exceeds
         max_chars, a second compact pass runs: only the first two characters
         get full descriptions, the rest use short references.
+
+        Set *include_style_overhead=True* only at call sites that prepend
+        ``style_prefix`` to the result — this reserves the extra space in the
+        budget so the compacting pass triggers at the right threshold. Callers
+        that do not prepend style_prefix (motion prompts, refine display, …)
+        should leave it False to avoid premature compaction.
         """
         scene_outfit = scene_outfit or {}
-        style_overhead = len(self.style_prefix) + 2  # ", " separator added by caller
-        budget = max_chars - style_overhead
+        budget = max_chars
+        if include_style_overhead:
+            budget -= len(self.style_prefix) + 2  # ", " separator added by caller
         result = self._expand_once(text, scene_outfit, compact_after=None)
         refs = self.characters_in(text, by_position=True)
         if len(refs) >= 3 and len(result) > budget:

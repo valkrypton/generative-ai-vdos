@@ -90,20 +90,21 @@ def resolve_style(raw: str | None) -> dict[str, str | None] | None:
     if raw is None:
         return None
 
-    if raw == "list":
+    normalized = raw.strip().lower()
+
+    if normalized == "list":
         _list_presets()
         sys.exit(0)
 
-    if raw.startswith("custom:"):
+    if normalized.startswith("custom:"):
         return {
-            "style_prefix": raw.removeprefix("custom:").strip(),
+            "style_prefix": raw.strip()[len("custom:"):].strip(),
             "global_negative": None,
             "music_mood": None,
         }
 
-    key = raw.lower()
-    if key in PRESETS:
-        return PRESETS[key]
+    if normalized in PRESETS:
+        return PRESETS[normalized]
 
     raise ValueError(
         f"Unknown style '{raw}'. Available: {', '.join(PRESETS)}"

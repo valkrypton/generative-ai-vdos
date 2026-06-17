@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import sys
-
 from pipeline.styles import PRESETS, inject_style_instruction, resolve_style
 
 

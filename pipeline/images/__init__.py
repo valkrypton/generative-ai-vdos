@@ -97,7 +97,7 @@ def generate_scene_image(
     fall through the remaining providers; an explicitly forced backend fails loudly."""
     scene = plan.scenes[index]
     path = out_dir / f"scene_{index:02d}.png"
-    scene_prompt = plan.expand(scene.image_prompt, scene_outfit=scene.outfit)
+    scene_prompt = plan.expand(scene.image_prompt, scene_outfit=scene.outfit, include_style_overhead=True)
     # When 3+ characters share a scene, reinforce all subjects so the model
     # doesn't drop the least prominent one.
     chars_in_scene = plan.characters_in(scene.image_prompt)
@@ -137,11 +137,20 @@ def generate_scene_image(
                     edit_prompt = (prompt + " Keep the person's face, hair and "
                                    "clothing identical to the reference image.")
             else:
+                char_map = {c.name: c for c in plan.characters}
                 mapping = "; ".join(f"reference image {i + 1} is {{{n}}}"
                                     for i, n in enumerate(named[:3]))
-                edit_prompt = (prompt + f" Identity references — {mapping}. Keep each "
-                               "person's face, hair and clothing identical to their "
-                               "reference image.")
+                any_inanimate = any(
+                    char_map[n].is_inanimate for n in named[:3] if n in char_map
+                )
+                if any_inanimate:
+                    consistency = ("Keep each subject's appearance identical to "
+                                   "their reference image.")
+                else:
+                    consistency = ("Keep each person's face, hair and clothing "
+                                   "identical to their reference image.")
+                edit_prompt = (prompt + f" Identity references — {mapping}. "
+                               + consistency)
             try:
                 primary.edit(edit_prompt, refs, path, negative=merged_negative)
                 return path, primary
