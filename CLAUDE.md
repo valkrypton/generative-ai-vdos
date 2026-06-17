@@ -144,10 +144,44 @@ backend/
 ```
 GET  /api/auth/login      → redirect to Cognito hosted UI
 GET  /api/auth/callback   → exchange code → decode id_token → get_or_create UserProfile
-                            → store cognito_sub + tokens in session → redirect to /dashboard
+                            → store cognito_sub + tokens in session → redirect to /home
 GET  /api/auth/me         → return UserProfile for session user (401 if not logged in)
 GET|POST /api/auth/logout → django_logout + redirect to Cognito logout
 ```
+
+### Frontend layout
+
+```
+webapp/
+  middleware.ts              # fast cookie-presence check; unauthed → /login; authed on /login → /home
+  app/
+    layout.tsx               # HTML shell only (fonts, globals.css)
+    page.tsx                 # / → redirect to /home
+    login/
+      page.tsx               # public login page (LoginScreen component)
+    (home)/                  # route group — invisible to URL
+      layout.tsx             # async Server Component: calls getUser(), redirects to /login on 401
+      home/
+        page.tsx             # /home — welcome banner, create video section, project list
+        _welcome-banner.tsx  # async Server Component — calls getUser() (deduplicated via React.cache)
+  components/
+    header.tsx               # 'use client' — receives email/name as props from (home)/layout
+    login-screen.tsx         # static login card with href to /api/auth/login
+  lib/
+    auth-server.ts           # getUser() wrapped in React.cache(); single fetch per request
+```
+
+**Auth is server-side.** `(home)/layout.tsx` calls `getUser()` on every navigation, which fetches
+`http://localhost:8000/api/auth/me` forwarding the `sessionid` cookie. `React.cache()` deduplicates
+within a single render pass (layout + page both calling `getUser()` = one network request).
+No client-side `AuthGuard`, no `UserContext`, no `useUser()`.
+
+### Webapp development rules
+
+- **If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.**
+- **If the user's prompts require you to change something in the backend, use the `django-patterns` skill, if it's available.**
+- **If the user's prompts require you to change something in the frontend, use the `vercel-react-best-practices` and `frontend-design:frontend-design`
+skills, if they're available.**
 
 ### Web app gotchas
 
@@ -156,8 +190,10 @@ GET|POST /api/auth/logout → django_logout + redirect to Cognito logout
 - **`CognitoService.get_or_create_profile` also syncs** — if a user updates their email/name in Cognito, the next login updates the local `UserProfile`.
 - **Tests use `config.settings.test`** — dummy COGNITO values are set there. Per-test Cognito overrides use `with self.settings(COGNITO=FAKE_COGNITO)`.
 - **Tests are co-located** — `apps/accounts/tests/`, `apps/projects/tests/`, `apps/health/tests/`. Run all with `python manage.py test apps`.
-- **`FRONTEND_URL` env var** — controls the redirect target after callback (default `http://localhost:3000`).
+- **`FRONTEND_URL` env var** — controls the redirect target after callback (default `http://localhost:3000`). Must point to `/home` after login.
 - **Logout accepts GET and POST** — GET so a browser link works directly; POST for programmatic calls.
+- **`sessionid` cookie is opaque** — just a session key; actual user data (tokens, sub) lives in Django's session store server-side. Next.js server-side fetch to `/api/auth/me` is the only way to get user data.
+- **`/api/*` rewrites are browser-only** — `next.config.mjs` rewrites proxy browser requests to Django. Server-side fetches in Server Components must use the full `http://localhost:8000` URL directly.
 
 ## Conventions
 
