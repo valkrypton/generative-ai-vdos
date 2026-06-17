@@ -1,4 +1,5 @@
 import secrets
+from datetime import datetime, timezone
 from django.contrib.auth import logout as django_logout
 from django.conf import settings
 from django.shortcuts import redirect
@@ -48,12 +49,18 @@ def callback(request):
 
     # Rotate the session key on login to prevent session fixation.
     request.session.cycle_key()
+
+    exp = claims.get("exp")
+    if exp:
+        expiry = datetime.fromtimestamp(exp, tz=timezone.utc)
+        request.session.set_expiry(expiry)
+
     request.session["id_token"] = id_token
     request.session["access_token"] = tokens.get("access_token", "")
     request.session["refresh_token"] = tokens.get("refresh_token", "")
     request.session["cognito_sub"] = sub
 
-    return redirect(f"{settings.FRONTEND_URL}/dashboard")
+    return redirect(f"{settings.FRONTEND_URL}/home")
 
 
 @api_view(["GET", "POST"])
