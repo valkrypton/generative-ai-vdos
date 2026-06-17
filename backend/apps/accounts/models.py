@@ -7,5 +7,10 @@ class UserProfile(TimestampMixin):
     email = models.EmailField(max_length=254)
     name = models.CharField(max_length=200, blank=True, default="")
 
+    @property
+    def is_authenticated(self):
+        # Lets DRF's IsAuthenticated treat a resolved profile as a logged-in user.
+        return True
+
     def __str__(self):
         return self.email

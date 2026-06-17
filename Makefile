@@ -68,7 +68,7 @@ prod:
 
 test:
 	uv sync --extra webapp
-	$(MANAGE) test backend/tests
+	$(MANAGE) test apps
 	$(PY) -m pytest tests/test_pipeline_isolation.py
 	$(PY) -m tests.test_expand
 
