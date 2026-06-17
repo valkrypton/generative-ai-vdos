@@ -49,8 +49,8 @@ def get_provider(name: Optional[str] = None, quality: str = "flash") -> VideoPro
 
 def _motion_prompt(plan: ShotPlan, scene: Scene) -> str:
     if scene.motion:
-        return f"{plan.expand(scene.motion)} Stay on this single shot, no scene changes."
-    return (f"{plan.expand(scene.image_prompt)} Gentle cinematic camera motion and subtle "
+        return f"{plan.expand(scene.motion, scene_outfit=scene.outfit)} Stay on this single shot, no scene changes."
+    return (f"{plan.expand(scene.image_prompt, scene_outfit=scene.outfit)} Gentle cinematic camera motion and subtle "
             f"natural movement. Stay on this single shot, no scene changes.")
 
 

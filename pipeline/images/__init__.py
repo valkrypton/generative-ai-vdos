@@ -70,9 +70,16 @@ def character_refs(plan: ShotPlan, provider: ImageProvider, out_dir: Path) -> di
     for c in plan.characters:
         p = ref_dir / f"{c.name}.png"
         if not p.is_file():
-            prompt = (f"{plan.style_prefix}, a character reference portrait of "
-                      f"{c.description.strip().rstrip('.')}, neutral standing pose, "
-                      f"plain neutral background, even lighting, full head and body visible")
+            desc = c.description.strip().rstrip(".")
+            if c.is_inanimate:
+                prompt = (f"{plan.style_prefix}, {desc}, "
+                          f"plain neutral background, even lighting, "
+                          f"centered product-style shot")
+            else:
+                prompt = (f"{plan.style_prefix}, a character reference portrait of "
+                          f"{desc}, neutral standing pose, "
+                          f"plain neutral background, even lighting, "
+                          f"full head and body visible")
             try:
                 provider.generate(prompt, p, negative=c.negative)
             except Exception as e:
@@ -90,8 +97,28 @@ def generate_scene_image(
     fall through the remaining providers; an explicitly forced backend fails loudly."""
     scene = plan.scenes[index]
     path = out_dir / f"scene_{index:02d}.png"
-    scene_prompt = plan.expand(scene.image_prompt)
+    scene_prompt = plan.expand(scene.image_prompt, scene_outfit=scene.outfit)
+    # When 3+ characters share a scene, reinforce all subjects so the model
+    # doesn't drop the least prominent one.
+    chars_in_scene = plan.characters_in(scene.image_prompt)
+    if len(chars_in_scene) >= 3:
+        char_map = {c.name: c for c in plan.characters}
+        short_names = [" ".join(char_map[n].description.split()[:4])
+                       for n in chars_in_scene if n in char_map]
+        scene_prompt += f". The scene must include all: {', '.join(short_names)}"
     prompt = f"{plan.style_prefix}, {scene_prompt}"
+
+    # Merge: global plan negative + per-character negatives + scene negative
+    # (used by both edit and generate paths)
+    char_negatives = [
+        c.negative for c in plan.characters
+        if c.negative and c.name in chars_in_scene
+    ]
+    merged_negative = ", ".join(filter(None, [
+        plan.global_negative,
+        *char_negatives,
+        scene.negative_prompt,
+    ])) or None
 
     # Reference-image consistency: edit the scene from each present character's
     # reference portrait so faces/clothing stay the same scene to scene.
@@ -101,8 +128,14 @@ def generate_scene_image(
         refs = [char_refs[n] for n in named][:3]
         if refs:
             if len(refs) == 1:
-                edit_prompt = (prompt + " Keep the person's face, hair and clothing "
-                               "identical to the reference image.")
+                n0 = named[0]
+                char = next(c for c in plan.characters if c.name == n0)
+                if char.is_inanimate:
+                    edit_prompt = (prompt + " Keep the object's shape, color and "
+                                   "details identical to the reference image.")
+                else:
+                    edit_prompt = (prompt + " Keep the person's face, hair and "
+                                   "clothing identical to the reference image.")
             else:
                 mapping = "; ".join(f"reference image {i + 1} is {{{n}}}"
                                     for i, n in enumerate(named[:3]))
@@ -110,7 +143,7 @@ def generate_scene_image(
                                "person's face, hair and clothing identical to their "
                                "reference image.")
             try:
-                primary.edit(edit_prompt, refs, path)
+                primary.edit(edit_prompt, refs, path, negative=merged_negative)
                 return path, primary
             except Exception as e:
                 print(f"  images: scene {index + 1} reference edit failed ({e}); "
@@ -125,19 +158,8 @@ def generate_scene_image(
         if editor is None:
             raise RuntimeError("reference_image needs a backend with edit support "
                                "(gpt-image-1 — set OPENAI_API_KEY)")
-        editor.edit(prompt, ref, path)
+        editor.edit(prompt, ref, path, negative=merged_negative)
         return path, editor
-
-    # Merge: global plan negative + per-character negatives + scene negative
-    char_negatives = [
-        c.negative for c in plan.characters
-        if c.negative and c.name in plan.characters_in(scene.image_prompt)
-    ]
-    merged_negative = ", ".join(filter(None, [
-        plan.global_negative,
-        *char_negatives,
-        scene.negative_prompt,
-    ])) or None
 
     chain = [primary]
     if fallback:

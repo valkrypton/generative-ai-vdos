@@ -42,11 +42,14 @@ class GptImageProvider(ImageProvider):
         img = Image.open(io.BytesIO(base64.b64decode(result.data[0].b64_json))).convert("RGB")
         fit_cover(img).save(path)
 
-    def edit(self, prompt: str, reference, path: Path) -> None:
+    def edit(self, prompt: str, reference, path: Path,
+             negative: Optional[str] = None) -> None:
         """Build the scene on top of one or more reference images. `reference` is
         a single Path or a list of Paths."""
         from openai import OpenAI
 
+        if negative:
+            prompt = f"{prompt}. Do not include: {negative}."
         refs = list(reference) if isinstance(reference, (list, tuple)) else [reference]
         client = OpenAI()
         handles = [open(Path(r), "rb") for r in refs]

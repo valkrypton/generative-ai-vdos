@@ -5,6 +5,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field, model_validator
 
 MAX_ANIMATED_SCENES = 2  # hard cap — animating costs DashScope credit
+MAX_PROMPT_CHARS = 1000
 
 
 class Character(BaseModel):
@@ -12,7 +13,16 @@ class Character(BaseModel):
     description: str = Field(
         description="Full visual description: age, hair, face, every clothing item "
         "with its color, e.g. 'a mid-30s man with short black hair and stubble, wearing "
-        "a black zip-up hoodie, dark blue jeans and white sneakers'."
+        "a black zip-up hoodie, dark blue jeans and white sneakers'. This is the "
+        "character's default look, used in every scene unless an outfit is selected."
+    )
+    outfits: Optional[dict[str, str]] = Field(
+        default=None,
+        description="Alternate complete looks for this character. Each value is a full "
+        "visual description (identity + clothing), just like 'description'. Example: "
+        "{\"superhero\": \"a 6-year-old boy with messy brown hair, round face, big hazel "
+        "eyes, wearing a red Superman t-shirt and blue jeans\"}. When a scene selects an "
+        "outfit by name, the pipeline uses that description instead of the default.",
     )
     negative: Optional[str] = Field(
         default=None,
@@ -21,6 +31,17 @@ class Character(BaseModel):
         "model keeps adding: e.g. 'hair, beard' for a bald character; "
         "'dark hair, black hair' for a white-haired character.",
     )
+    is_inanimate: bool = Field(
+        default=False,
+        description="True for non-person, non-animal characters (props, food, landmarks, "
+        "vehicles, treasures). Controls reference-image prompting: inanimate characters "
+        "get product-style shots instead of portrait poses.",
+    )
+
+    def resolve_description(self, outfit_name: str | None = None) -> str:
+        if not outfit_name or not self.outfits:
+            return self.description
+        return self.outfits.get(outfit_name, self.description)
 
 
 class Scene(BaseModel):
@@ -61,6 +82,12 @@ class Scene(BaseModel):
         "building, person, product). The image model edits/composes from it instead of "
         "generating from scratch. Needs a backend with edit support (gpt-image-1).",
     )
+    outfit: Optional[dict[str, str]] = Field(
+        default=None,
+        description="Optional per-scene outfit selection. Maps character name to outfit "
+        "name defined in that character's outfits dict. Example: {\"boy\": \"superhero\"}. "
+        "Characters not listed here use their default description.",
+    )
 
 
 class ShotPlan(BaseModel):
@@ -93,21 +120,27 @@ class ShotPlan(BaseModel):
     def cap_animated_scenes(self) -> "ShotPlan":
         animated = [i for i, s in enumerate(self.scenes) if s.animate]
         if len(animated) > MAX_ANIMATED_SCENES:
-            # Force the extra ones off — keep only the first MAX_ANIMATED_SCENES
             for i in animated[MAX_ANIMATED_SCENES:]:
                 self.scenes[i].animate = False
         return self
 
-    def characters_in(self, text: str) -> List[str]:
-        """Names of characters referenced in text (via {placeholder} or bare name)."""
-        found = []
+    def characters_in(self, text: str, *, by_position: bool = False) -> List[str]:
+        """Names of characters referenced in text (via {placeholder} or bare name).
+
+        Default order follows self.characters; with by_position=True, names are
+        sorted by their first appearance position in text.
+        """
+        found: list[tuple[int, str]] = []
         for c in self.characters:
             pattern = r"\{" + re.escape(c.name) + r"\}|\b" + re.escape(c.name) + r"\b"
-            if re.search(pattern, text, flags=re.IGNORECASE):
-                found.append(c.name)
-        return found
+            m = re.search(pattern, text, flags=re.IGNORECASE)
+            if m:
+                found.append((m.start(), c.name))
+        if by_position:
+            found.sort()
+        return [name for _, name in found]
 
-    def expand(self, text: str) -> str:
+    def expand(self, text: str, max_chars: int = MAX_PROMPT_CHARS, scene_outfit: dict[str, str] | None = None) -> str:
         """Replace character references with their full descriptions.
 
         Matches both {name} placeholders and bare names (word-boundary,
@@ -115,33 +148,45 @@ class ShotPlan(BaseModel):
 
         A character mentioned more than once in the same text gets its full
         description on the FIRST mention only; later mentions collapse to a
-        short reference (e.g. "the eldest daughter"). Repeating a full
-        description bloats the prompt and can make the image model render the
-        same person twice.
+        short reference. Repeating a full description bloats the prompt and
+        can make the image model render the same person twice.
+
+        When 3+ characters appear and the fully-expanded text exceeds
+        max_chars, a second compact pass runs: only the first two characters
+        get full descriptions, the rest use short references.
         """
+        scene_outfit = scene_outfit or {}
+        style_overhead = len(self.style_prefix) + 2  # ", " separator added by caller
+        budget = max_chars - style_overhead
+        result = self._expand_once(text, scene_outfit, compact_after=None)
+        refs = self.characters_in(text, by_position=True)
+        if len(refs) >= 3 and len(result) > budget:
+            result = self._expand_once(text, scene_outfit, compact_after=refs[:2])
+        return result
+
+    def _expand_once(self, text: str, scene_outfit: dict[str, str],
+                     compact_after: list[str] | None) -> str:
+        """Single expansion pass. If compact_after is set, only those characters
+        get full descriptions; the rest use short refs everywhere."""
         substituted = False
         for c in self.characters:
-            desc = c.description.strip().rstrip(".")
+            desc = c.resolve_description(scene_outfit.get(c.name)).strip().rstrip(".")
             short = "the " + c.name.replace("_", " ")
             pattern = r"\{" + re.escape(c.name) + r"\}|\b" + re.escape(c.name) + r"\b"
-
-            # Single pass over the ORIGINAL text: first match -> full description,
-            # any further ones -> short ref. One pass (not two) so the substituted
-            # description is never re-scanned — important when a description
-            # contains the character's own name (e.g. "a reddish-brown octopus").
+            force_short = compact_after is not None and c.name not in compact_after
             seen = {"n": 0}
 
-            def repl(m, desc=desc, short=short, seen=seen):
+            def repl(m, desc=desc, short=short, seen=seen, force_short=force_short):
                 seen["n"] += 1
-                return desc if seen["n"] == 1 else short
+                if force_short or seen["n"] > 1:
+                    return short
+                return desc
 
             new, n = re.subn(pattern, repl, text, flags=re.IGNORECASE)
             if n:
                 substituted = True
                 text = new
         if substituted:
-            # collapse double articles produced by "the {name}" -> "the a young boy ..."
             text = re.sub(r"\b(?:the|a|an) (a|an|the)\b", r"\1", text, flags=re.IGNORECASE)
-        # always collapse double spaces — can appear after placeholder substitution
         text = re.sub(r" {2,}", " ", text).strip()
         return text

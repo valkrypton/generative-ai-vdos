@@ -16,6 +16,7 @@ Usage:
 """
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -39,9 +40,11 @@ def print_plan(plan: ShotPlan, work_dir: Path) -> None:
         chars = plan.characters_in(s.image_prompt)
         if chars:
             print(f"  chars     : {', '.join(chars)} (full descriptions substituted automatically)")
-        print(f"  image     : {plan.expand(s.image_prompt)}")
+        if s.outfit:
+            print(f"  outfit    : {s.outfit}")
+        print(f"  image     : {plan.expand(s.image_prompt, scene_outfit=s.outfit)}")
         if s.motion:
-            print(f"  motion    : {plan.expand(s.motion)}")
+            print(f"  motion    : {plan.expand(s.motion, scene_outfit=s.outfit)}")
         if s.voice:
             print(f"  voice     : {s.voice}")
         if s.on_screen_text:
@@ -74,10 +77,16 @@ def main() -> None:
                         help="Output folder name for a new plan (default: timestamp)")
     parser.add_argument("--model", default=None,
                         help="Override the model id (default: resolved from LLM_PROVIDER)")
+    parser.add_argument("--style", default=os.environ.get("VIDEO_STYLE"),
+                        help="Style preset name, 'list' to show all, or "
+                             "'custom:your description' (.env: VIDEO_STYLE)")
     args = parser.parse_args()
     if not args.model:
         from .script_agent import default_model
         args.model = default_model()  # errors if LLM_PROVIDER not set
+
+    from .styles import resolve_style
+    style = resolve_style(args.style)
 
     if args.input is None:
         from .run import latest_work_dir
@@ -107,7 +116,7 @@ def main() -> None:
         from .run import slugify
         from .script_agent import generate_shot_plan
         print(f"generating plan ({args.model})...")
-        plan = generate_shot_plan(args.input, model=args.model)
+        plan = generate_shot_plan(args.input, model=args.model, style=style)
         # Folder named after the generated title, e.g. output/the-thief-act/
         name = args.name or slugify(plan.title)[:40].strip("-") or time.strftime("%Y%m%d-%H%M%S")
         work_dir = Path("output") / name
@@ -120,10 +129,15 @@ def main() -> None:
 
     # New plans get a polish pass automatically; existing plans only with --polish.
     if args.polish or (not is_existing_plan and not args.no_polish):
-        from .script_agent import consistency_review, polish_image_prompts
+        from .script_agent import polish_image_prompts
         print(f"polishing image prompts ({args.model})...")
         plan = polish_image_prompts(plan, model=args.model)
         (work_dir / "shot_plan.json").write_text(plan.model_dump_json(indent=2))
+
+    # Consistency review always runs on new plans (catches structural bugs
+    # like recurring objects missing from the characters list).
+    if args.polish or not is_existing_plan:
+        from .script_agent import consistency_review
         print(f"consistency review ({args.model})...")
         plan = consistency_review(plan, model=args.model)
         (work_dir / "shot_plan.json").write_text(plan.model_dump_json(indent=2))
