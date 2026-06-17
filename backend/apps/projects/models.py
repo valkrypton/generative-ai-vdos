@@ -50,7 +50,12 @@ class Scene(TimestampMixin):
         Project, on_delete=models.CASCADE, related_name="scenes"
     )
     index          = models.IntegerField()
-    image_path     = models.CharField(max_length=500, blank=True, default="")
+    narration      = models.TextField()
+    media_prompt         = models.TextField()
+    on_screen_text = models.CharField(max_length=256,blank=True, default="")
+    negative_prompt = models.TextField(max_length=256, blank=True, default="")
+    animate        = models.BooleanField(default=False)
+    media_path     = models.CharField(max_length=500, blank=True, default="")
     image_status   = models.CharField(
         max_length=20, choices=ImageStatus.choices, default=ImageStatus.PENDING
     )
