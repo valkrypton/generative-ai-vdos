@@ -6,7 +6,7 @@ from django.test import TestCase
 
 from apps.projects.models import Project
 from apps.projects.utils import get_work_dir
-from apps.users.models import UserProfile
+from apps.accounts.models import UserProfile
 
 
 def _make_project():

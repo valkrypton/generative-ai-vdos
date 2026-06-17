@@ -6,6 +6,10 @@ CORS_ALLOWED_ORIGINS = ["http://localhost:3000"]
 
 # Dummy values so startup passes without real Cognito credentials.
 # Individual tests override with self.settings(COGNITO=FAKE_COGNITO).
+# Celery: run tasks synchronously in-process (no Redis required)
+CELERY_TASK_ALWAYS_EAGER = True
+CELERY_TASK_EAGER_PROPAGATES = True
+
 COGNITO = {
     "COGNITO_DOMAIN": "https://test.auth.example.com",
     "COGNITO_APP_CLIENT_ID": "test-client-id",

@@ -2,7 +2,7 @@ import uuid
 from django.test import TestCase
 from apps.accounts.models import UserProfile
 from apps.projects.models import Project
-from apps.projects.constants import NarratorVoice, MusicMood
+from apps.projects.constants import NarratorVoice, MusicMood, Status
 
 
 def make_user(sub="sub-1"):

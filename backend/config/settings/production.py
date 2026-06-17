@@ -16,6 +16,10 @@ CORS_ALLOWED_ORIGINS = env_csv("CORS_ALLOWED_ORIGINS")
 
 require_cognito()
 
+# Celery: real broker (Redis) in production
+CELERY_BROKER_URL = os.environ["CELERY_BROKER_URL"]
+CELERY_RESULT_BACKEND = os.environ["CELERY_RESULT_BACKEND"]
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

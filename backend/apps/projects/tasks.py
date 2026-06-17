@@ -34,11 +34,16 @@ def run_image_stage(self, project_id, scene_index):
         scene.image_status = ImageStatus.DONE
         scene.save(update_fields=["image_status", "updated_at"])
         log_event(project_id, "images", "info", f"Scene {scene_index} image done")
+    except (ConnectionError, TimeoutError):
+        scene.image_status = ImageStatus.FAILED
+        scene.save(update_fields=["image_status", "updated_at"])
+        log_event(project_id, "images", "error", f"Scene {scene_index} failed (will retry)")
+        raise
     except Exception as exc:
         scene.image_status = ImageStatus.FAILED
         scene.save(update_fields=["image_status", "updated_at"])
         log_event(project_id, "images", "error", f"Scene {scene_index} failed: {exc}")
-        raise self.retry(exc=exc)
+        raise
 
     return {"project_id": project_id, "scene_index": scene_index}
 
@@ -62,9 +67,12 @@ def run_voice_stage(self, project_id):
         work_dir.mkdir(parents=True, exist_ok=True)
         # TODO: call actual TTS backend
         log_event(project_id, "voice", "info", "Voiceover done")
+    except (ConnectionError, TimeoutError):
+        log_event(project_id, "voice", "error", "Voiceover failed (will retry)")
+        raise
     except Exception as exc:
         log_event(project_id, "voice", "error", f"Voiceover failed: {exc}")
-        raise self.retry(exc=exc)
+        raise
 
     return {"project_id": project_id}
 
@@ -89,9 +97,12 @@ def run_assemble_stage(self, project_id):
         # TODO: call actual FFmpeg assembly
         project.transition_status(Status.DONE)
         log_event(project_id, "assemble", "info", "Assembly complete")
+    except (ConnectionError, TimeoutError):
+        log_event(project_id, "assemble", "error", "Assembly failed (will retry)")
+        raise
     except Exception as exc:
         log_event(project_id, "assemble", "error", f"Assembly failed: {exc}")
-        raise self.retry(exc=exc)
+        raise
 
     return {"project_id": project_id}
 
