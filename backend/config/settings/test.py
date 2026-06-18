@@ -12,6 +12,15 @@ CELERY_TASK_EAGER_PROPAGATES = True
 
 FIELD_ENCRYPTION_KEY = "SgCzHjGtX6nlkiI4xmKwZJ85MTGdO-e2MiuUBN1v8JI="
 
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.InMemoryStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
+
 COGNITO = {
     "COGNITO_DOMAIN": "https://test.auth.example.com",
     "COGNITO_APP_CLIENT_ID": "test-client-id",

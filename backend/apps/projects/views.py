@@ -12,6 +12,10 @@ from apps.projects.serializers import (
     SceneSerializer,
 )
 from apps.projects.services import ProjectService
+from .models import Project, Scene, JobLog
+from .serializers import ProjectSerializer, ProjectCreateSerializer, SceneSerializer, JobLogSerializer
+from .services import ProjectService
+from apps.storage import storage_provider
 
 
 class ProjectViewSet(viewsets.ModelViewSet):
@@ -64,3 +68,10 @@ class SceneViewSet(viewsets.ReadOnlyModelViewSet):
             project_id=self.kwargs["project_pk"],
             project__owner=self.request.user,
         )
+
+    @action(detail=True, methods=["get"], url_path="media-urls")
+    def media_urls(self, request, project_pk=None, pk=None):
+        scene = self.get_object()
+        return Response({
+            "media_url": storage_provider.url(scene.media_path),
+        })

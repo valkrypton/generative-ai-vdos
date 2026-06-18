@@ -17,4 +17,9 @@ urlpatterns = router.urls + [
         SceneViewSet.as_view({"get": "retrieve"}),
         name="project-scenes-detail",
     ),
+    path(
+        "projects/<uuid:project_pk>/scenes/<int:pk>/media-urls/",
+        SceneViewSet.as_view({"get": "media_urls"}),
+        name="project-scenes-media-urls",
+    ),
 ]

@@ -20,6 +20,8 @@ from apps.projects.utils import (
 from pipeline.schema import ShotPlan
 from pipeline.script_agent import generate_shot_plan, revise_shot_plan
 from pipeline.styles import PRESETS
+from apps.projects.utils import get_work_dir, log_event
+from apps.storage import storage_provider
 
 logger = logging.getLogger(__name__)
 

@@ -58,10 +58,12 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "corsheaders",
+    "storages",
     "apps.health",
     "apps.core",
     "apps.accounts",
     "apps.projects",
+    "apps.storage",
 ]
 
 MIDDLEWARE = [
@@ -123,3 +125,15 @@ STATIC_URL = "static/"
 
 MEDIA_ROOT = BASE_DIR / "media"
 MEDIA_URL = "/media/"
+
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+        "OPTIONS": {
+            "allow_overwrite": True,
+        },
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}

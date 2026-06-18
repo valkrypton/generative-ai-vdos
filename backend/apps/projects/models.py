@@ -51,6 +51,12 @@ class LLMModel(TimestampMixin):
         return f"{self.display_name} ({self.provider.code})"
 
 
+def scene_media_upload_path(instance: Scene, filename) -> str:
+    if instance.animate:
+        return f"{instance.project.owner.id}/{instance.project.id}/clip/{filename}"
+    else:
+        return f"{instance.project.owner.id}/{instance.project.id}/images/{filename}"
+
 class Project(TimestampMixin):
     Status = Status
     ImageStatus = ImageStatus
@@ -118,7 +124,7 @@ class Scene(TimestampMixin):
     on_screen_text = models.CharField(max_length=256, blank=True, default="")
     negative_prompt = models.TextField(max_length=256, blank=True, default="")
     animate        = models.BooleanField(default=False)
-    media_path     = models.CharField(max_length=500, blank=True, default="")
+    media_path     = models.FileField(upload_to=scene_media_upload_path, blank=True, default="")
     image_status   = models.CharField(
         max_length=20, choices=ImageStatus.choices, default=ImageStatus.PENDING
     )

@@ -19,7 +19,7 @@ class SceneTest(TestCase):
         self.assertEqual(s.project, self.project)
         self.assertEqual(s.index, 0)
         self.assertEqual(s.image_status, ImageStatus.PENDING)
-        self.assertEqual(s.media_path, "")
+        self.assertFalse(s.media_path)   # empty FileField is falsy
         self.assertEqual(s.image_provider, "")
 
     def test_unique_together_project_index(self):
