@@ -1,32 +1,48 @@
+from pathlib import Path
+
+from django.core.files import File
+from django.core.files.storage import storages
+from django.db.models.fields.files import FieldFile
 from django.utils.functional import SimpleLazyObject
 
-from apps.storage.local_storage import LocalStorageProvider
-from apps.storage.s3_storage import S3StorageProvider
 
-
-def _get_provider():
+class StorageProvider:
     """
-    Factory that returns the provider matching the current default storage
-    backend. Detects S3Boto3Storage at runtime; falls back to LocalStorageProvider
-    for FileSystemStorage and InMemoryStorage (dev + test).
+    Single facade over Django's configured storage backends — no local-vs-S3
+    subclasses. Which backend is used is decided entirely by settings: the
+    `backend` name is looked up in the STORAGES dict (edX-style selection on
+    STORAGES['default']['BACKEND']), where 'default' resolves to
+    FileSystemStorage in dev/test and S3Boto3Storage in production.
+
+    There is no branching in url(): on S3 with querystring_auth=True the
+    backend returns a presigned URL automatically; locally it returns a plain
+    /media/… path. Expiry is governed by the backend's querystring_expire.
     """
-    from django.core.files.storage import default_storage
-    try:
-        from storages.backends.s3boto3 import S3Boto3Storage
-        if isinstance(default_storage, S3Boto3Storage):
-            expire = getattr(default_storage, "querystring_expire", 3600)
-            return S3StorageProvider(expire=expire)
-    except ImportError:
-        pass
-    return LocalStorageProvider()
+
+    def __init__(self, backend: str = "default"):
+        self.storage = storages[backend]
+
+    def upload(self, field_file: FieldFile, local_path: Path, *, save: bool = True) -> None:
+        """
+        Write local_path into field_file via the configured storage backend.
+        field_file.save() applies the field's upload_to key and persists the
+        row when save=True; pass save=False to batch before a single .save().
+        """
+        with local_path.open("rb") as fh:
+            field_file.save(local_path.name, File(fh), save=save)
+
+    def url(self, field_file: FieldFile) -> str | None:
+        """Access URL for field_file (presigned on S3), or None if empty."""
+        if not field_file:
+            return None
+        # Expiry comes from the backend's querystring_expire. If per-call expiry
+        # is ever needed, add expire=None here and pass it to storage.url(...).
+        return self.storage.url(field_file.name)
 
 
-# Global storage provider — lazily instantiated on first access so it is safe
-# to import at module level before Django's app registry is fully loaded.
-# Mirrors how Django exposes django.core.files.storage.default_storage.
-#
-# Usage from any Django app:
+# Lazily built so importing this module never touches settings or the app
+# registry before Django is ready. Usage from any app:
 #   from apps.storage import storage_provider
 #   storage_provider.upload(scene.media_path, disk_path)
 #   storage_provider.url(scene.media_path)
-storage_provider = SimpleLazyObject(_get_provider)
+storage_provider = SimpleLazyObject(StorageProvider)

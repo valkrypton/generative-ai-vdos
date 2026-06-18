@@ -2,15 +2,13 @@ import tempfile
 from pathlib import Path
 
 from django.core.files.base import ContentFile
+from django.core.files.storage import storages
 from django.test import TestCase
 
 from apps.accounts.models import UserProfile
 from apps.projects.models import Project, Scene
-from apps.storage import _get_provider
-from apps.storage.local_storage import LocalStorageProvider
-from apps.storage.s3_storage import S3StorageProvider
-from apps.storage.base_storage import BaseStorageProvider
-from apps.storage import storage_provider
+from apps.storage import StorageProvider, storage_provider
+
 
 def _owner(sub="sub-utils"):
     return UserProfile.objects.create(cognito_sub=sub, email=f"{sub}@test.com")
@@ -27,25 +25,15 @@ def _tmp_file(content: bytes = b"\x89PNG\r\n", suffix: str = ".png") -> Path:
     return Path(f.name)
 
 
-class StorageProviderAbstractionTest(TestCase):
-    """Ensure the class hierarchy is correct without hitting storage backends."""
+class StorageProviderBackendTest(TestCase):
+    """The single provider resolves its backend by name from STORAGES."""
 
-    def test_base_is_abstract(self):
-        self.assertTrue(hasattr(BaseStorageProvider, "__abstractmethods__"))
+    def test_uses_named_backend_from_settings(self):
+        self.assertIs(StorageProvider().storage, storages["default"])
 
-    def test_local_is_concrete_subclass(self):
-        self.assertTrue(issubclass(LocalStorageProvider, BaseStorageProvider))
-        p = LocalStorageProvider()
-        self.assertIsInstance(p, BaseStorageProvider)
-
-    def test_s3_is_concrete_subclass(self):
-        self.assertTrue(issubclass(S3StorageProvider, BaseStorageProvider))
-        p = S3StorageProvider(expire=1800)
-        self.assertIsInstance(p, BaseStorageProvider)
-
-    def test_get_provider_returns_local_in_tests(self):
-        # InMemoryStorage is active in tests — provider must be Local
-        self.assertIsInstance(_get_provider(), LocalStorageProvider)
+    def test_facade_exposes_upload_and_url(self):
+        self.assertTrue(callable(storage_provider.upload))
+        self.assertTrue(callable(storage_provider.url))
 
 
 class UploadFileToFieldTest(TestCase):

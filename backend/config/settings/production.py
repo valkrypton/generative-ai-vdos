@@ -29,7 +29,11 @@ STORAGES = {
         "OPTIONS": {
             "bucket_name": AWS_STORAGE_BUCKET_NAME,
             "region_name": AWS_S3_REGION_NAME,
-            "default_acl": "private",
+            # ACLs are disabled by default on buckets created since Apr 2023;
+            # passing an ACL ("private") would raise AccessControlListNotSupported.
+            # None lets the bucket policy + Block Public Access enforce privacy,
+            # while querystring_auth=True still serves objects via presigned URLs.
+            "default_acl": None,
             "file_overwrite": False,
             "querystring_auth": True,
             "querystring_expire": 3600,

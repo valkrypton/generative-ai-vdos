@@ -52,10 +52,12 @@ class LLMModel(TimestampMixin):
 
 
 def scene_media_upload_path(instance: Scene, filename) -> str:
+    # Use owner_id (FK column on project) rather than owner.id so the key can be
+    # built from the select_related("project") row without loading UserProfile.
     if instance.animate:
-        return f"{instance.project.owner.id}/{instance.project.id}/clip/{filename}"
+        return f"{instance.project.owner_id}/{instance.project.id}/clip/{filename}"
     else:
-        return f"{instance.project.owner.id}/{instance.project.id}/images/{filename}"
+        return f"{instance.project.owner_id}/{instance.project.id}/images/{filename}"
 
 class Project(TimestampMixin):
     Status = Status
