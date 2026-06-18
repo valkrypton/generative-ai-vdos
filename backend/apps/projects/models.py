@@ -51,7 +51,7 @@ class LLMModel(TimestampMixin):
         return f"{self.display_name} ({self.provider.code})"
 
 
-def scene_media_upload_path(instance: Scene, filename) -> str:
+def scene_media_upload_path(instance: "Scene", filename) -> str:
     # Use owner_id (FK column on project) rather than owner.id so the key can be
     # built from the select_related("project") row without loading UserProfile.
     if instance.animate:

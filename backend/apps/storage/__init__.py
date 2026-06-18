@@ -12,7 +12,8 @@ class StorageProvider:
     subclasses. Which backend is used is decided entirely by settings: the
     `backend` name is looked up in the STORAGES dict (edX-style selection on
     STORAGES['default']['BACKEND']), where 'default' resolves to
-    FileSystemStorage in dev/test and S3Boto3Storage in production.
+    FileSystemStorage in development, InMemoryStorage in tests, and
+    S3Boto3Storage in production.
 
     There is no branching in url(): on S3 with querystring_auth=True the
     backend returns a presigned URL automatically; locally it returns a plain

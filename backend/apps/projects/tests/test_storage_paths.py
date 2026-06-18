@@ -21,10 +21,10 @@ def _project(owner):
 
 
 def _tmp(suffix=".png") -> Path:
-    f = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-    f.write(b"data")
-    f.flush()
-    return Path(f.name)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+        f.write(b"data")
+        f.flush()
+        return Path(f.name)
 
 
 class UploadToPathStructureTest(TestCase):

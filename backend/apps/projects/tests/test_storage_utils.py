@@ -19,10 +19,10 @@ def _project(owner=None):
 
 
 def _tmp_file(content: bytes = b"\x89PNG\r\n", suffix: str = ".png") -> Path:
-    f = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-    f.write(content)
-    f.flush()
-    return Path(f.name)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+        f.write(content)
+        f.flush()
+        return Path(f.name)
 
 
 class StorageProviderBackendTest(TestCase):
