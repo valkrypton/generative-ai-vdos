@@ -3,15 +3,15 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import JobLog, LLMModel, Project, Scene
-from .serializers import (
+from apps.projects.models import JobLog, LLMModel, Project, Scene
+from apps.projects.serializers import (
     JobLogSerializer,
     LLMModelSerializer,
     ProjectCreateSerializer,
     ProjectSerializer,
     SceneSerializer,
 )
-from .services import ProjectService
+from apps.projects.services import ProjectService
 
 
 class ProjectViewSet(viewsets.ModelViewSet):

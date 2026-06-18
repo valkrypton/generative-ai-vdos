@@ -1,14 +1,5 @@
 from django.db import models
 
-TRANSITIONS = {
-    "DRAFT": {"PLANNING"},
-    "PLANNING": {"REVIEW", "FAILED"},
-    "REVIEW": {"PLANNING", "GENERATING"},
-    "GENERATING": {"DONE", "FAILED"},
-    "FAILED": {"GENERATING"},
-    "DONE": set(),
-}
-
 
 class Status(models.TextChoices):
     DRAFT = "DRAFT"
@@ -17,6 +8,16 @@ class Status(models.TextChoices):
     GENERATING = "GENERATING"
     DONE = "DONE"
     FAILED = "FAILED"
+
+
+TRANSITIONS: dict[str, set[str]] = {
+    Status.DRAFT: {Status.PLANNING},
+    Status.PLANNING: {Status.REVIEW, Status.FAILED},
+    Status.REVIEW: {Status.PLANNING, Status.GENERATING},
+    Status.GENERATING: {Status.DONE, Status.FAILED},
+    Status.FAILED: {Status.GENERATING},
+    Status.DONE: set(),
+}
 
 
 class ImageStatus(models.TextChoices):

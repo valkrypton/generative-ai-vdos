@@ -1,5 +1,5 @@
+import itertools
 import uuid as _uuid
-from pathlib import Path
 
 from apps.accounts.models import UserProfile
 from apps.projects.constants import Status
@@ -47,17 +47,19 @@ def make_generating_project(scene_count=2):
     project.transition_status(Status.REVIEW)
     project.transition_status(Status.GENERATING)
     for i in range(scene_count):
-        Scene.objects.create(project=project, index=i)
+        Scene.objects.create(
+            project=project, index=i,
+            narration="test narration", media_prompt="a test image",
+        )
     return project
 
 
-_fake_counter = 0
+_fake_counter = itertools.count()
 
 
 def make_fake_image(tmp_dir):
-    global _fake_counter
-    img = tmp_dir / "images" / f"scene_{_fake_counter:02d}.png"
-    _fake_counter += 1
+    idx = next(_fake_counter)
+    img = tmp_dir / "images" / f"scene_{idx:02d}.png"
     img.parent.mkdir(parents=True, exist_ok=True)
     img.write_bytes(b"\x89PNG\r\n\x1a\n")
     return img

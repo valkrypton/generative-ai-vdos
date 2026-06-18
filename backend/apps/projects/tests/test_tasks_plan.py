@@ -6,8 +6,8 @@ from django.test import TestCase
 from apps.core.models import Provider
 from apps.projects.constants import Capability, Status
 from apps.projects.models import LLMModel, Scene
-from apps.projects.tasks import run_plan_stage
-from apps.projects.tests.helpers import make_project, make_shot_plan
+from apps.projects.tasks import run_plan_stage, run_refine_stage
+from apps.projects.tests.helpers import make_project, make_project_in, make_shot_plan
 
 
 def _make_plan_model():
@@ -37,8 +37,8 @@ def _fake_shot_plan(scene_count=2):
     return plan
 
 
-@patch("apps.projects.tasks.consistency_review")
-@patch("apps.projects.tasks.polish_image_prompts")
+@patch("apps.projects.utils.consistency_review")
+@patch("apps.projects.utils.polish_image_prompts")
 @patch("apps.projects.tasks.generate_shot_plan")
 class RunPlanStageTest(TestCase):
 
@@ -71,6 +71,50 @@ class RunPlanStageTest(TestCase):
         llm = _make_plan_model()
         project = make_project(plan_model=llm)
         run_plan_stage(project.id)
+
+        project.refresh_from_db()
+        self.assertEqual(project.status, Status.FAILED)
+        self.assertIn("LLM unavailable", project.error)
+
+
+@patch("apps.projects.utils.consistency_review")
+@patch("apps.projects.utils.polish_image_prompts")
+@patch("apps.projects.tasks.revise_shot_plan")
+class RunRefineStageTest(TestCase):
+
+    def test_happy_path(self, mock_revise, mock_polish, mock_review):
+        plan = _fake_shot_plan(2)
+        mock_revise.return_value = plan
+        mock_polish.return_value = plan
+        mock_review.return_value = plan
+
+        llm = _make_plan_model()
+        project = make_project_in(
+            Status.REVIEW, plan_model=llm, shot_plan=make_shot_plan(3),
+        )
+        run_refine_stage(project.id, "add more humor")
+
+        mock_revise.assert_called_once()
+        args, kwargs = mock_revise.call_args
+        self.assertEqual(kwargs["model"], llm.model_id)
+        self.assertEqual(args[1], "add more humor")
+
+        project.refresh_from_db()
+        self.assertEqual(project.status, Status.REVIEW)
+        self.assertEqual(Scene.objects.filter(project=project).count(), 2)
+
+    def test_missing_project_returns_early(self, mock_revise, mock_polish, mock_review):
+        run_refine_stage(uuid.uuid4(), "change something")
+        mock_revise.assert_not_called()
+
+    def test_error_marks_failed(self, mock_revise, mock_polish, mock_review):
+        mock_revise.side_effect = RuntimeError("LLM unavailable")
+
+        llm = _make_plan_model()
+        project = make_project_in(
+            Status.REVIEW, plan_model=llm, shot_plan=make_shot_plan(2),
+        )
+        run_refine_stage(project.id, "make it darker")
 
         project.refresh_from_db()
         self.assertEqual(project.status, Status.FAILED)
