@@ -75,7 +75,7 @@ class QwenImageProvider(ImageProvider):
         fit_cover(img).save(path)
 
     def generate(self, prompt: str, path: Path, query: Optional[str] = None,
-                 negative: Optional[str] = None) -> None:
+                 negative: Optional[str] = None, api_key=None) -> None:
         if len(prompt) > MAX_PROMPT:
             print(f"  images: WARNING prompt is {len(prompt)} chars, cutting to "
                   f"{MAX_PROMPT} — some detail at the end will be lost")

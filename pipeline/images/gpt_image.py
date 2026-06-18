@@ -28,7 +28,7 @@ class GptImageProvider(ImageProvider):
         return bool(os.environ.get("OPENAI_API_KEY"))
 
     def generate(self, prompt: str, path: Path, query: Optional[str] = None,
-                 negative: Optional[str] = None) -> None:
+                 negative: Optional[str] = None, api_key=None) -> None:
         from openai import OpenAI
 
         # No negative_prompt param here, but the model follows instructions well

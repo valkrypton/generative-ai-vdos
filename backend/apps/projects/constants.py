@@ -1,6 +1,6 @@
 from django.db import models
 
-_TRANSITIONS = {
+TRANSITIONS = {
     "DRAFT": {"PLANNING"},
     "PLANNING": {"REVIEW", "FAILED"},
     "REVIEW": {"PLANNING", "GENERATING"},
@@ -46,6 +46,22 @@ class MusicMood(models.TextChoices):
     DRAMATIC = "dramatic"
     MYSTERIOUS = "mysterious"
     INSPIRING = "inspiring"
+
+
+class Capability(models.TextChoices):
+    PLAN  = "plan",  "Shot Plan (LLM)"
+    IMAGE = "image", "Image Generation"
+    VIDEO = "video", "Video Animation"
+
+
+class StylePreset(models.TextChoices):
+    CINEMATIC   = "cinematic",   "Cinematic"
+    ANIME       = "anime",       "Anime"
+    WATERCOLOR  = "watercolor",  "Watercolor"
+    DOCUMENTARY = "documentary", "Documentary"
+    STORYBOOK   = "storybook",   "Storybook"
+    NOIR        = "noir",        "Noir"
+    RETRO_PIXEL = "retro-pixel", "Retro Pixel"
 
 
 class NarratorVoice(models.TextChoices):

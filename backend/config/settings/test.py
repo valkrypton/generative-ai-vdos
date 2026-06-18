@@ -10,6 +10,8 @@ CORS_ALLOWED_ORIGINS = ["http://localhost:3000"]
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
 
+FIELD_ENCRYPTION_KEY = "SgCzHjGtX6nlkiI4xmKwZJ85MTGdO-e2MiuUBN1v8JI="
+
 COGNITO = {
     "COGNITO_DOMAIN": "https://test.auth.example.com",
     "COGNITO_APP_CLIENT_ID": "test-client-id",

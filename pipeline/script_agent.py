@@ -14,6 +14,7 @@ import os
 from pydantic import ValidationError
 
 from .schema import ShotPlan
+from .secure import SecureString
 
 SYSTEM = """You are a scriptwriter for a faceless YouTube channel. Given a topic or rough
 script, produce a complete shot plan for a 60-90 second video built from still images,
@@ -176,12 +177,49 @@ def default_model() -> str:
     return model
 
 
-def _parse_with_llm(user_content: str, model: str, system_extra: str | None = None) -> ShotPlan:
-    system = SYSTEM if not system_extra else f"{SYSTEM}\n\n{system_extra}"
-    if model.startswith("claude"):
-        import anthropic
+_PROVIDER_SDK = {
+    "openai":    ("openai",    "OPENAI_API_KEY",    None),
+    "anthropic": ("anthropic", "ANTHROPIC_API_KEY",  None),
+    "google":    ("openai",    "GOOGLE_API_KEY",     "https://generativelanguage.googleapis.com/v1beta/openai/"),
+    "litellm":   ("openai",    "LITELLM_API_KEY",   None),
+}
 
-        client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
+
+def _infer_provider(model: str) -> str:
+    if model.startswith("gpt"):
+        return "openai"
+    if model.startswith("claude"):
+        return "anthropic"
+    if model.startswith("gemini"):
+        return "google"
+    return "litellm"
+
+
+def _build_client(model: str, provider: str | None = None, api_key: SecureString | None = None):
+    resolved_key = api_key.decrypt() if api_key else None
+    resolved_provider = provider or _infer_provider(model)
+    sdk_type, env_var, base_url = _PROVIDER_SDK[resolved_provider]
+
+    if sdk_type == "anthropic":
+        import anthropic
+        return anthropic.Anthropic(api_key=resolved_key or os.environ.get(env_var))
+
+    from openai import OpenAI
+    if resolved_provider == "litellm":
+        base_url = base_url or (os.environ.get("LITELLM_BASE_URL") or "https://litellm.arbisoft.com").rstrip("/")
+    return OpenAI(
+        api_key=resolved_key or os.environ.get(env_var),
+        base_url=base_url,
+    )
+
+
+def _parse_with_llm(user_content: str, model: str, system_extra: str | None = None,
+                    provider: str | None = None, api_key: SecureString | None = None) -> ShotPlan:
+    system = SYSTEM if not system_extra else f"{SYSTEM}\n\n{system_extra}"
+    resolved_provider = provider or _infer_provider(model)
+    client = _build_client(model, provider=resolved_provider, api_key=api_key)
+
+    if resolved_provider == "anthropic":
         response = client.messages.parse(
             model=model,
             max_tokens=8192,
@@ -191,21 +229,7 @@ def _parse_with_llm(user_content: str, model: str, system_extra: str | None = No
         )
         return response.parsed_output
 
-    from openai import OpenAI
-
-    if model.startswith("gemini"):
-        key = os.environ.get("GOOGLE_API_KEY")
-        if not key:
-            raise RuntimeError("Gemini provider needs GOOGLE_API_KEY — set it in .env")
-        client = OpenAI(
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-            api_key=key,
-        )
-        return _parse_json_mode(client, model, user_content, system=system)
-
-    if model.startswith("gpt"):
-        # native OpenAI — strict json_schema parse is reliable here
-        client = OpenAI()  # reads OPENAI_API_KEY
+    if resolved_provider == "openai":
         completion = client.chat.completions.parse(
             model=model,
             messages=[
@@ -216,14 +240,6 @@ def _parse_with_llm(user_content: str, model: str, system_extra: str | None = No
         )
         return completion.choices[0].message.parsed
 
-    # any other id (e.g. groq/llama-3.3-70b-versatile) -> company LiteLLM proxy.
-    key = os.environ.get("LITELLM_API_KEY")
-    if not key:
-        raise RuntimeError(
-            f"model '{model}' needs LITELLM_API_KEY (company proxy); "
-            "set it in .env or use a gpt-*/claude-* model")
-    base = (os.environ.get("LITELLM_BASE_URL") or "https://litellm.arbisoft.com").rstrip("/")
-    client = OpenAI(base_url=base, api_key=key)
     return _parse_json_mode(client, model, user_content, system=system)
 
 
@@ -268,13 +284,25 @@ def _parse_json_mode(client, model: str, user_content: str, tries: int = 3,
         f"model '{model}' did not return a valid shot plan after {tries} tries: {last_err}")
 
 
-def generate_shot_plan(topic: str, model: str = "claude-haiku-4-5", style: dict | None = None) -> ShotPlan:
+def generate_shot_plan(
+    topic: str,
+    model: str = "claude-haiku-4-5",
+    style: dict | None = None,
+    provider: str | None = None,
+    api_key: SecureString | None = None,
+) -> ShotPlan:
     from .styles import inject_style_instruction
     style_extra = inject_style_instruction(style) if style else None
-    return _parse_with_llm(f"Topic / rough script:\n\n{topic}", model, system_extra=style_extra)
+    return _parse_with_llm(f"Topic / rough script:\n\n{topic}", model,
+                           system_extra=style_extra, provider=provider, api_key=api_key)
 
 
-def polish_image_prompts(plan: ShotPlan, model: str = "claude-haiku-4-5") -> ShotPlan:
+def polish_image_prompts(
+    plan: ShotPlan,
+    model: str = "claude-haiku-4-5",
+    provider: str | None = None,
+    api_key: SecureString | None = None,
+) -> ShotPlan:
     return _parse_with_llm(
         "Here is an existing shot plan JSON:\n\n"
         f"{plan.model_dump_json(indent=2)}\n\n"
@@ -284,11 +312,16 @@ def polish_image_prompts(plan: ShotPlan, model: str = "claude-haiku-4-5") -> Sho
         "placeholders EXACTLY as written — never expand, reword, or remove them. Return "
         "the COMPLETE plan with every other field (narration, voice, motion, characters, "
         "title, tags, ...) unchanged.",
-        model,
+        model, provider=provider, api_key=api_key,
     )
 
 
-def consistency_review(plan: ShotPlan, model: str = "claude-haiku-4-5") -> ShotPlan:
+def consistency_review(
+    plan: ShotPlan,
+    model: str = "claude-haiku-4-5",
+    provider: str | None = None,
+    api_key: SecureString | None = None,
+) -> ShotPlan:
     """Second-pass review focused entirely on character consistency errors."""
     return _parse_with_llm(
         "Review this shot plan for character consistency problems and return a corrected version.\n\n"
@@ -331,11 +364,17 @@ def consistency_review(plan: ShotPlan, model: str = "claude-haiku-4-5") -> ShotP
         "scene after a clothing change sets the outfit field correctly.\n\n"
         "Return the COMPLETE corrected plan with ALL fields intact. "
         "Only change what the checks above require.",
-        model,
+        model, provider=provider, api_key=api_key,
     )
 
 
-def revise_shot_plan(plan: ShotPlan, feedback: str, model: str = "claude-haiku-4-5") -> ShotPlan:
+def revise_shot_plan(
+    plan: ShotPlan,
+    feedback: str,
+    model: str = "claude-haiku-4-5",
+    provider: str | None = None,
+    api_key: SecureString | None = None,
+) -> ShotPlan:
     return _parse_with_llm(
         "Here is an existing shot plan JSON:\n\n"
         f"{plan.model_dump_json(indent=2)}\n\n"
@@ -344,5 +383,5 @@ def revise_shot_plan(plan: ShotPlan, feedback: str, model: str = "claude-haiku-4
         "If the feedback changes a character's look, update that character's "
         "description verbatim in every scene where they appear:\n\n"
         f"{feedback}",
-        model,
+        model, provider=provider, api_key=api_key,
     )

@@ -6,9 +6,8 @@ from django.conf import settings
 from django.db import transaction
 
 from apps.accounts.models import UserProfile
-
-from .constants import Level, Stage
-from .models import JobLog, Project
+from apps.projects.constants import Level, Stage
+from apps.projects.models import JobLog, Project
 
 logger = logging.getLogger(__name__)
 

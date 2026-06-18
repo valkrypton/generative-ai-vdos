@@ -1,9 +1,16 @@
-from rest_framework import viewsets, status
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from .models import Project, Scene, JobLog
-from .serializers import ProjectSerializer, ProjectCreateSerializer, SceneSerializer, JobLogSerializer
+
+from .models import JobLog, LLMModel, Project, Scene
+from .serializers import (
+    JobLogSerializer,
+    LLMModelSerializer,
+    ProjectCreateSerializer,
+    ProjectSerializer,
+    SceneSerializer,
+)
 from .services import ProjectService
 
 
@@ -34,6 +41,18 @@ class ProjectViewSet(viewsets.ModelViewSet):
         project = self.get_object()
         logs = JobLog.objects.filter(project=project)
         return Response(JobLogSerializer(logs, many=True).data)
+
+
+class LLMModelViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = LLMModelSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = LLMModel.objects.filter(is_active=True).select_related("provider")
+        capability = self.request.query_params.get("capability")
+        if capability:
+            qs = qs.filter(capability=capability)
+        return qs
 
 
 class SceneViewSet(viewsets.ReadOnlyModelViewSet):

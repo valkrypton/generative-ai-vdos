@@ -82,7 +82,7 @@ class WanProvider(VideoProvider):
     def download(self, url: str, out_path: Path) -> None:
         urllib.request.urlretrieve(url, out_path)
 
-    def generate(self, prompt: str, image_path: Path, out_path: Path) -> None:
+    def generate(self, prompt: str, image_path: Path, out_path: Path, api_key=None) -> None:
         task_id = self.submit(prompt, image_path)
         deadline = time.time() + 15 * 60
         while time.time() < deadline:

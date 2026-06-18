@@ -1,8 +1,10 @@
 import uuid
+
 from django.test import TestCase
+
 from apps.accounts.models import UserProfile
+from apps.projects.constants import MusicMood, NarratorVoice, Status
 from apps.projects.models import Project
-from apps.projects.constants import NarratorVoice, MusicMood, Status
 
 
 def make_user(sub="sub-1"):
@@ -24,7 +26,9 @@ class ProjectFieldsTest(TestCase):
         p = make_project()
         self.assertEqual(p.status, Status.DRAFT)
         self.assertIsNone(p.shot_plan)
-        self.assertEqual(p.image_backend, "")
+        self.assertIsNone(p.plan_model)
+        self.assertIsNone(p.image_model)
+        self.assertIsNone(p.video_model)
         self.assertFalse(p.animate)
         self.assertEqual(p.narrator_voice, NarratorVoice.ANDREW)
         self.assertEqual(p.music, MusicMood.CALM)
