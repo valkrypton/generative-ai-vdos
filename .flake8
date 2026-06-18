@@ -1,0 +1,10 @@
+[flake8]
+max-line-length = 120
+exclude =
+    .venv,
+    migrations,
+    __pycache__,
+    node_modules
+extend-ignore = E203, W503, E221
+per-file-ignores =
+    backend/config/settings/*.py: F401, F403, F405, E501

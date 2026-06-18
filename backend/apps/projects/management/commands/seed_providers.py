@@ -14,22 +14,30 @@ PROVIDERS = [
     {"code": "pexels",    "name": "Pexels"},
 ]
 
+
+def _model(provider, cap, model_id, name, free=False, default=False):
+    return {
+        "provider": provider, "capability": cap, "model_id": model_id,
+        "display_name": name, "is_free": free, "is_default": default,
+    }
+
+
 MODELS = [
     # Plan models
-    {"provider": "google",    "capability": Capability.PLAN,  "model_id": "gemini-3.1-flash-lite", "display_name": "Gemini Flash Lite (free)", "is_free": True,  "is_default": True},
-    {"provider": "google",    "capability": Capability.PLAN,  "model_id": "gemini-2.5-flash",      "display_name": "Gemini Flash",             "is_free": False, "is_default": False},
-    {"provider": "openai",    "capability": Capability.PLAN,  "model_id": "gpt-4o-mini",           "display_name": "GPT-4o Mini",              "is_free": False, "is_default": False},
-    {"provider": "anthropic", "capability": Capability.PLAN,  "model_id": "claude-haiku-4-5",      "display_name": "Claude Haiku",             "is_free": False, "is_default": False},
-    {"provider": "litellm",   "capability": Capability.PLAN,  "model_id": "groq/llama-3.3-70b",    "display_name": "Llama 3.3 70B (LiteLLM)", "is_free": True,  "is_default": False},
+    _model("google", Capability.PLAN, "gemini-3.1-flash-lite", "Gemini Flash Lite (free)", free=True, default=True),
+    _model("google", Capability.PLAN, "gemini-2.5-flash", "Gemini Flash"),
+    _model("openai", Capability.PLAN, "gpt-4o-mini", "GPT-4o Mini"),
+    _model("anthropic", Capability.PLAN, "claude-haiku-4-5", "Claude Haiku"),
+    _model("litellm", Capability.PLAN, "groq/llama-3.3-70b", "Llama 3.3 70B (LiteLLM)", free=True),
     # Image models
-    {"provider": "dashscope", "capability": Capability.IMAGE, "model_id": "qwen-image",            "display_name": "Qwen Image (free)",        "is_free": True,  "is_default": True},
-    {"provider": "replicate", "capability": Capability.IMAGE, "model_id": "flux-schnell",           "display_name": "Flux Schnell",             "is_free": True,  "is_default": False},
-    {"provider": "pexels",    "capability": Capability.IMAGE, "model_id": "pexels",                 "display_name": "Pexels Stock",             "is_free": True,  "is_default": False},
-    {"provider": "openai",    "capability": Capability.IMAGE, "model_id": "gpt-image-1",            "display_name": "GPT Image 1",              "is_free": False, "is_default": False},
+    _model("dashscope", Capability.IMAGE, "qwen-image", "Qwen Image (free)", free=True, default=True),
+    _model("replicate", Capability.IMAGE, "flux-schnell", "Flux Schnell", free=True),
+    _model("pexels", Capability.IMAGE, "pexels", "Pexels Stock", free=True),
+    _model("openai", Capability.IMAGE, "gpt-image-1", "GPT Image 1"),
     # Video models
-    {"provider": "dashscope", "capability": Capability.VIDEO, "model_id": "wan2.2-i2v-flash",      "display_name": "Wan Flash",                "is_free": True,  "is_default": True},
-    {"provider": "dashscope", "capability": Capability.VIDEO, "model_id": "wan2.1-i2v-turbo",      "display_name": "Wan Turbo",                "is_free": False, "is_default": False},
-    {"provider": "dashscope", "capability": Capability.VIDEO, "model_id": "wan2.1-i2v-plus",       "display_name": "Wan Plus",                 "is_free": False, "is_default": False},
+    _model("dashscope", Capability.VIDEO, "wan2.2-i2v-flash", "Wan Flash", free=True, default=True),
+    _model("dashscope", Capability.VIDEO, "wan2.1-i2v-turbo", "Wan Turbo"),
+    _model("dashscope", Capability.VIDEO, "wan2.1-i2v-plus", "Wan Plus"),
 ]
 
 
