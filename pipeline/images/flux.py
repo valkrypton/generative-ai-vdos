@@ -23,7 +23,7 @@ class FluxProvider(ImageProvider):
         return True
 
     def generate(self, prompt: str, path: Path, query: Optional[str] = None,
-                 negative: Optional[str] = None) -> None:
+                 negative: Optional[str] = None, api_key=None) -> None:
         import replicate
 
         model = os.environ.get("REPLICATE_IMAGE_MODEL", "").strip()

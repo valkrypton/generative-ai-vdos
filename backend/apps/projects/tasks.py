@@ -1,73 +1,109 @@
 import logging
 
 from celery import shared_task
-from django.db import transaction
 
 from apps.projects.constants import ImageStatus, Level, Stage, Status
 from apps.projects.models import Project, Scene
 from apps.projects.services import publish_event
-from apps.projects.utils import get_work_dir
+from apps.projects.utils import (
+    fail_project,
+    fetch_project_for_plan,
+    get_work_dir,
+    handle_transient_error,
+    polish_plan,
+    resolve_plan_model,
+    resolve_secure_key,
+    save_plan,
+)
+from pipeline.schema import ShotPlan
+from pipeline.script_agent import generate_shot_plan, revise_shot_plan
+from pipeline.styles import PRESETS
 
 logger = logging.getLogger(__name__)
 
-
-@shared_task(
+_PLAN_TASK_OPTS = dict(
+    bind=True,
+    max_retries=2,
+    autoretry_for=(ConnectionError, TimeoutError),
+    retry_backoff=True,
+    retry_backoff_max=120,
+    retry_jitter=True,
     soft_time_limit=5 * 60,
     time_limit=6 * 60,
 )
-def run_plan_stage(project_id):
-    from pipeline.script_agent import (
-        consistency_review,
-        generate_shot_plan,
-        polish_image_prompts,
-    )
 
-    try:
-        project = Project.objects.get(id=project_id)
-    except Project.DoesNotExist:
-        logger.error("Project %s not found, aborting plan stage", project_id)
+
+@shared_task(**_PLAN_TASK_OPTS)
+def run_plan_stage(self, project_id):
+    project = fetch_project_for_plan(project_id)
+    if project is None:
         return {"project_id": str(project_id)}
 
     try:
+        llm = resolve_plan_model(project)
+        model_id = llm.model_id
+        provider_code = llm.provider.code
+        secure_key = resolve_secure_key(project.owner, llm.provider)
+        style = PRESETS.get(project.style) if project.style else None
+
+        logger.info(
+            "Plan stage — model=%s, provider=%s, key_source=%s, style=%s",
+            model_id, provider_code,
+            "db" if secure_key else "env-fallback",
+            project.style or "none",
+        )
+
         project.transition_status(Status.PLANNING)
 
-        publish_event(project_id, Stage.PLAN, Level.INFO, "Generating shot plan")
-        plan = generate_shot_plan(project.prompt)
+        publish_event(project_id, Stage.PLAN, Level.INFO, f"Generating shot plan with {model_id}")
+        plan = generate_shot_plan(project.prompt, model=model_id, style=style,
+                                  provider=provider_code, api_key=secure_key)
 
         publish_event(project_id, Stage.PLAN, Level.INFO, "Polishing image prompts")
-        plan = polish_image_prompts(plan)
-
-        publish_event(project_id, Stage.PLAN, Level.INFO, "Running consistency review")
-        plan = consistency_review(plan)
-
-        with transaction.atomic():
-            project.shot_plan = plan.model_dump()
-            project.title = plan.title
-            project.save(update_fields=["shot_plan", "title", "updated_at"])
-
-            project.scenes.all().delete()
-            Scene.objects.bulk_create([
-                Scene(
-                    project=project,
-                    index=i,
-                    narration=scene.narration,
-                    media_prompt=scene.image_prompt,
-                    on_screen_text=scene.on_screen_text or "",
-                    negative_prompt=scene.negative_prompt or "",
-                    animate=scene.animate,
-                )
-                for i, scene in enumerate(plan.scenes)
-            ])
+        plan = polish_plan(plan, model_id, provider_code, secure_key)
+        save_plan(project, plan)
 
         publish_event(project_id, Stage.PLAN, Level.INFO, f"Shot plan ready — {len(plan.scenes)} scenes")
         project.transition_status(Status.REVIEW)
 
+    except (ConnectionError, TimeoutError) as exc:
+        handle_transient_error(self, project, project_id, Stage.PLAN, exc)
     except Exception as exc:
-        project.error = str(exc)[:2000]
-        project.save(update_fields=["error", "updated_at"])
-        project.transition_status(Status.FAILED)
-        publish_event(project_id, Stage.PLAN, Level.ERROR, str(exc)[:500])
-        raise
+        fail_project(project, project_id, Stage.PLAN, exc)
+
+    return {"project_id": str(project_id)}
+
+
+@shared_task(**_PLAN_TASK_OPTS)
+def run_refine_stage(self, project_id, instruction):
+    project = fetch_project_for_plan(project_id)
+    if project is None:
+        return {"project_id": str(project_id)}
+
+    try:
+        llm = resolve_plan_model(project)
+        model_id = llm.model_id
+        provider_code = llm.provider.code
+        secure_key = resolve_secure_key(project.owner, llm.provider)
+        current_plan = ShotPlan(**project.shot_plan)
+
+        project.transition_status(Status.PLANNING)
+
+        publish_event(project_id, Stage.PLAN, Level.INFO, f"Revising shot plan with {model_id}")
+        plan = revise_shot_plan(current_plan, instruction, model=model_id,
+                                provider=provider_code, api_key=secure_key)
+
+        publish_event(project_id, Stage.PLAN, Level.INFO, "Polishing image prompts")
+        plan = polish_plan(plan, model_id, provider_code, secure_key)
+        save_plan(project, plan)
+
+        publish_event(project_id, Stage.PLAN, Level.INFO, f"Revised plan ready — {len(plan.scenes)} scenes")
+        project.transition_status(Status.REVIEW)
+
+    except (ConnectionError, TimeoutError) as exc:
+        handle_transient_error(self, project, project_id, Stage.PLAN, exc)
+    except Exception as exc:
+        fail_project(project, project_id, Stage.PLAN, exc)
 
     return {"project_id": str(project_id)}
 
@@ -83,7 +119,9 @@ def run_plan_stage(project_id):
     time_limit=12 * 60,
 )
 def run_image_stage(self, project_id, scene_index):
-    project = Project.objects.get(id=project_id)
+    project = Project.objects.select_related(
+        "image_model", "image_model__provider", "owner",
+    ).get(id=project_id)
     scene = Scene.objects.get(project_id=project_id, index=scene_index)
 
     scene.image_status = ImageStatus.RUNNING
@@ -94,22 +132,17 @@ def run_image_stage(self, project_id, scene_index):
     try:
         work_dir = get_work_dir(project)
         work_dir.mkdir(parents=True, exist_ok=True)
-        # TODO: call actual image backend
+        # TODO: call actual image backend with image_model + secure_key
         scene.image_status = ImageStatus.DONE
         scene.save(update_fields=["image_status", "updated_at"])
         publish_event(project_id, Stage.IMAGES, Level.INFO, f"Scene {scene_index} image done",
                       scene_index=scene_index)
-    except (ConnectionError, TimeoutError):
-        scene.image_status = ImageStatus.FAILED
-        scene.save(update_fields=["image_status", "updated_at"])
-        publish_event(project_id, Stage.IMAGES, Level.ERROR, f"Scene {scene_index} failed (will retry)",
-                      scene_index=scene_index)
-        raise
     except Exception as exc:
         scene.image_status = ImageStatus.FAILED
         scene.save(update_fields=["image_status", "updated_at"])
-        publish_event(project_id, Stage.IMAGES, Level.ERROR, f"Scene {scene_index} failed: {exc}",
-                      scene_index=scene_index)
+        is_transient = isinstance(exc, (ConnectionError, TimeoutError))
+        message = f"Scene {scene_index} failed (will retry)" if is_transient else f"Scene {scene_index} failed: {exc}"
+        publish_event(project_id, Stage.IMAGES, Level.ERROR, message, scene_index=scene_index)
         raise
 
     return {"project_id": project_id, "scene_index": scene_index}
@@ -132,13 +165,12 @@ def run_voice_stage(self, project_id):
     try:
         work_dir = get_work_dir(project)
         work_dir.mkdir(parents=True, exist_ok=True)
-        # TODO: call actual TTS backend
+        # TODO: call actual TTS backend (edge-tts is free, no key needed)
         publish_event(project_id, Stage.VOICE, Level.INFO, "Voiceover done")
-    except (ConnectionError, TimeoutError):
-        publish_event(project_id, Stage.VOICE, Level.ERROR, "Voiceover failed (will retry)")
-        raise
     except Exception as exc:
-        publish_event(project_id, Stage.VOICE, Level.ERROR, f"Voiceover failed: {exc}")
+        is_transient = isinstance(exc, (ConnectionError, TimeoutError))
+        message = "Voiceover failed (will retry)" if is_transient else f"Voiceover failed: {exc}"
+        publish_event(project_id, Stage.VOICE, Level.ERROR, message)
         raise
 
     return {"project_id": project_id}
@@ -161,14 +193,13 @@ def run_assemble_stage(self, project_id):
     try:
         work_dir = get_work_dir(project)
         work_dir.mkdir(parents=True, exist_ok=True)
-        # TODO: call actual FFmpeg assembly
+        # TODO: call actual FFmpeg assembly (no external API, no key needed)
         project.transition_status(Status.DONE)
         publish_event(project_id, Stage.ASSEMBLE, Level.INFO, "Assembly complete")
-    except (ConnectionError, TimeoutError):
-        publish_event(project_id, Stage.ASSEMBLE, Level.ERROR, "Assembly failed (will retry)")
-        raise
     except Exception as exc:
-        publish_event(project_id, Stage.ASSEMBLE, Level.ERROR, f"Assembly failed: {exc}")
+        is_transient = isinstance(exc, (ConnectionError, TimeoutError))
+        message = "Assembly failed (will retry)" if is_transient else f"Assembly failed: {exc}"
+        publish_event(project_id, Stage.ASSEMBLE, Level.ERROR, message)
         raise
 
     return {"project_id": project_id}
@@ -180,9 +211,9 @@ def mark_pipeline_failed(task_id, project_id):
     logger.error("Pipeline task %s failed for project %s", task_id, project_id)
     try:
         project = Project.objects.get(id=project_id)
-        project.transition_status(Status.FAILED)
         project.error = f"Pipeline task {task_id} failed"
         project.save(update_fields=["error", "updated_at"])
+        project.transition_status(Status.FAILED)
         publish_event(project_id, Stage.IMAGES, Level.ERROR, f"Pipeline failed (task {task_id})")
     except Project.DoesNotExist:
         logger.warning("Project %s not found when marking failed", project_id)

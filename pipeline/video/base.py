@@ -9,7 +9,10 @@ concurrently instead of waiting on each clip in turn.
 """
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from pipeline.secure import SecureString
 
 
 class VideoProvider(ABC):
@@ -20,10 +23,9 @@ class VideoProvider(ABC):
         """True when this backend is usable (credentials/deps present)."""
 
     @abstractmethod
-    def generate(self, prompt: str, image_path: Path, out_path: Path) -> None:
-        """Animate the still at image_path into a short mp4 at out_path.
-        Clip length is whatever the model produces (typically ~5s); assembly
-        loops/trims it to the narration length."""
+    def generate(self, prompt: str, image_path: Path, out_path: Path,
+                 api_key: "SecureString | None" = None) -> None:
+        """Animate the still at image_path into a short mp4 at out_path."""
 
     # Optional async-task protocol (see module docstring):
     # submit(prompt, image_path) -> task_id: str

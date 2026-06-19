@@ -10,6 +10,18 @@ CORS_ALLOWED_ORIGINS = env_csv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
 
 require_cognito()
 
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {"class": "logging.StreamHandler"},
+    },
+    "loggers": {
+        "apps": {"handlers": ["console"], "level": "INFO"},
+        "pipeline": {"handlers": ["console"], "level": "INFO"},
+    },
+}
+
 # Celery: run tasks synchronously in-process (no Redis required locally)
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True

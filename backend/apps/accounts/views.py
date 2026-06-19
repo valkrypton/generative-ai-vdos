@@ -1,13 +1,17 @@
 import secrets
 from datetime import datetime, timezone
-from django.contrib.auth import logout as django_logout
+
 from django.conf import settings
+from django.contrib.auth import logout as django_logout
 from django.shortcuts import redirect
+from rest_framework import mixins, viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from .cognito import build_authorize_url, exchange_code, build_logout_url, decode_id_token
-from .serializers import UserProfileSerializer
+
+from .cognito import build_authorize_url, build_logout_url, decode_id_token, exchange_code
+from .models import UserAPIKey
+from .serializers import UserAPIKeySerializer, UserProfileSerializer
 from .services import CognitoService
 
 
@@ -73,3 +77,22 @@ def logout(request):
 @permission_classes([IsAuthenticated])
 def me(request):
     return Response(UserProfileSerializer(request.user).data)
+
+
+class UserAPIKeyViewSet(
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    serializer_class = UserAPIKeySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return UserAPIKey.objects.filter(
+            owner=self.request.user,
+        ).select_related("provider")
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
