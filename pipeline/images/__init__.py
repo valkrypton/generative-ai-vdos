@@ -9,7 +9,6 @@ results, network error), the remaining available providers are tried in order,
 ending at the always-available placeholder.
 """
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 from ..schema import ShotPlan
 from .base import ImageProvider
@@ -19,7 +18,7 @@ from .pexels import PexelsProvider
 from .placeholder import PlaceholderProvider
 from .qwen_image import QwenImageProvider
 
-PROVIDERS: List[ImageProvider] = [
+PROVIDERS: list[ImageProvider] = [
     QwenImageProvider(),  # free — always first; also does reference-image editing (consistent faces)
     FluxProvider(),       # free tier only — costs money after quota
     PexelsProvider(),
@@ -34,12 +33,14 @@ ALIASES = {
     "openai": "gpt-image-1",
     "gpt": "gpt-image-1",
     "qwen": "qwen-image",
+    "dashscope": "qwen-image",
     "flux": "flux-schnell",
+    "replicate": "flux-schnell",
     "stock": "pexels",
 }
 
 
-def get_provider(name: Optional[str] = None) -> ImageProvider:
+def get_provider(name: str | None = None, api_key=None) -> ImageProvider:
     if not name:
         raise RuntimeError(
             "no image backend set — put IMAGE_BACKEND in .env "
@@ -47,7 +48,7 @@ def get_provider(name: Optional[str] = None) -> ImageProvider:
     name = ALIASES.get(name.strip().lower(), name)
     for p in PROVIDERS:
         if p.name == name:
-            if not p.available():
+            if not api_key and not p.available():
                 need = f"set {p.requires} in .env" if p.requires else "missing API key or package"
                 raise RuntimeError(f"image backend '{name}' is not configured — {need}")
             return p
@@ -55,7 +56,8 @@ def get_provider(name: Optional[str] = None) -> ImageProvider:
         f"unknown image backend '{name}' — choices: {', '.join(p.name for p in PROVIDERS)}")
 
 
-def character_refs(plan: ShotPlan, provider: ImageProvider, out_dir: Path) -> dict:
+def character_refs(plan: ShotPlan, provider: ImageProvider, out_dir: Path,
+                   api_key=None) -> dict:
     """Render one clean reference portrait per character (once) so single-character
     scenes can be edited from them for a consistent face/clothing. Only meaningful
     for providers that can edit from a reference (qwen-image, gpt-image-1); returns
@@ -81,7 +83,8 @@ def character_refs(plan: ShotPlan, provider: ImageProvider, out_dir: Path) -> di
                           f"plain neutral background, even lighting, "
                           f"full head and body visible")
             try:
-                provider.generate(prompt, p, negative=c.negative)
+                data = provider.generate(prompt, negative=c.negative, api_key=api_key)
+                p.write_bytes(data)
             except Exception as e:
                 print(f"    ref {c.name}: failed ({e}) — scenes will text-to-image instead")
                 continue
@@ -90,16 +93,15 @@ def character_refs(plan: ShotPlan, provider: ImageProvider, out_dir: Path) -> di
 
 
 def generate_scene_image(
-    plan: ShotPlan, index: int, out_dir: Path, primary: ImageProvider,
-    fallback: bool = True, char_refs: Optional[dict] = None,
-) -> Tuple[Path, ImageProvider]:
-    """Generate one scene's image. With fallback (auto-picked backend), failures
-    fall through the remaining providers; an explicitly forced backend fails loudly."""
+    plan: ShotPlan, index: int, primary: ImageProvider,
+    fallback: bool = True, char_refs: dict | None = None,
+    api_key=None, model: str | None = None,
+) -> tuple[bytes, ImageProvider]:
+    """Generate one scene's image bytes. With fallback (auto-picked backend),
+    failures fall through the remaining providers; an explicitly forced backend
+    fails loudly."""
     scene = plan.scenes[index]
-    path = out_dir / f"scene_{index:02d}.png"
     scene_prompt = plan.expand(scene.image_prompt, scene_outfit=scene.outfit, include_style_overhead=True)
-    # When 3+ characters share a scene, reinforce all subjects so the model
-    # doesn't drop the least prominent one.
     chars_in_scene = plan.characters_in(scene.image_prompt)
     if len(chars_in_scene) >= 3:
         char_map = {c.name: c for c in plan.characters}
@@ -108,8 +110,6 @@ def generate_scene_image(
         scene_prompt += f". The scene must include all: {', '.join(short_names)}"
     prompt = f"{plan.style_prefix}, {scene_prompt}"
 
-    # Merge: global plan negative + per-character negatives + scene negative
-    # (used by both edit and generate paths)
     char_negatives = [
         c.negative for c in plan.characters
         if c.negative and c.name in chars_in_scene
@@ -120,9 +120,6 @@ def generate_scene_image(
         scene.negative_prompt,
     ])) or None
 
-    # Reference-image consistency: edit the scene from each present character's
-    # reference portrait so faces/clothing stay the same scene to scene.
-    # qwen-image-2.0 takes up to 3 references, so multi-character scenes lock too.
     if char_refs and not scene.reference_image and hasattr(primary, "edit"):
         named = [n for n in plan.characters_in(scene.image_prompt) if n in char_refs]
         refs = [char_refs[n] for n in named][:3]
@@ -152,8 +149,7 @@ def generate_scene_image(
                 edit_prompt = (prompt + f" Identity references — {mapping}. "
                                + consistency)
             try:
-                primary.edit(edit_prompt, refs, path, negative=merged_negative)
-                return path, primary
+                return primary.edit(edit_prompt, refs, negative=merged_negative, api_key=api_key, model=model), primary
             except Exception as e:
                 print(f"  images: scene {index + 1} reference edit failed ({e}); "
                       "falling back to text-to-image")
@@ -167,8 +163,7 @@ def generate_scene_image(
         if editor is None:
             raise RuntimeError("reference_image needs a backend with edit support "
                                "(gpt-image-1 — set OPENAI_API_KEY)")
-        editor.edit(prompt, ref, path, negative=merged_negative)
-        return path, editor
+        return editor.edit(prompt, ref, negative=merged_negative, api_key=api_key, model=model), editor
 
     chain = [primary]
     if fallback:
@@ -176,8 +171,8 @@ def generate_scene_image(
     last_error = None
     for provider in chain:
         try:
-            provider.generate(prompt, path, query=scene_prompt, negative=merged_negative)
-            return path, provider
+            data = provider.generate(prompt, query=scene_prompt, negative=merged_negative, api_key=api_key, model=model)
+            return data, provider
         except Exception as e:
             last_error = e
             more = "; trying next" if provider is not chain[-1] else ""
@@ -185,7 +180,7 @@ def generate_scene_image(
     raise RuntimeError(f"image generation failed for scene {index + 1}: {last_error}")
 
 
-def generate_images(plan: ShotPlan, out_dir: Path, backend: Optional[str] = None) -> List[Path]:
+def generate_images(plan: ShotPlan, out_dir: Path, backend: str | None = None) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     primary = get_provider(backend)
     print(f"  images: backend = {primary.name}")
@@ -197,8 +192,10 @@ def generate_images(plan: ShotPlan, out_dir: Path, backend: Optional[str] = None
     refs = character_refs(plan, primary, out_dir)
     paths = []
     for i in range(len(plan.scenes)):
-        path, used = generate_scene_image(plan, i, out_dir, primary,
+        data, used = generate_scene_image(plan, i, primary,
                                           fallback=backend is None, char_refs=refs)
+        path = out_dir / f"scene_{i:02d}.png"
+        path.write_bytes(data)
         note = "" if used is primary else f" (fell back to {used.name})"
         print(f"  images: scene {i + 1}/{len(plan.scenes)}{note}")
         paths.append(path)

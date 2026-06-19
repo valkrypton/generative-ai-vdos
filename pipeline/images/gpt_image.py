@@ -4,12 +4,11 @@ import base64
 import io
 import os
 from pathlib import Path
-from typing import Optional
 
 from PIL import Image
 
 from .base import ImageProvider
-from .util import fit_cover
+from .util import to_png_bytes
 
 
 def _model() -> str:
@@ -27,35 +26,34 @@ class GptImageProvider(ImageProvider):
     def available(self) -> bool:
         return bool(os.environ.get("OPENAI_API_KEY"))
 
-    def generate(self, prompt: str, path: Path, query: Optional[str] = None,
-                 negative: Optional[str] = None, api_key=None) -> None:
+    def generate(self, prompt: str, query: str | None = None,
+                 negative: str | None = None, api_key=None,
+                 model: str | None = None) -> bytes:
         from openai import OpenAI
 
-        # No negative_prompt param here, but the model follows instructions well
-        # — fold negatives into the prompt as an explicit "do not include".
         if negative:
             prompt = f"{prompt}. Do not include: {negative}."
-        client = OpenAI()
+        client = OpenAI(api_key=api_key.decrypt()) if api_key else OpenAI()
         result = client.images.generate(
-            model=_model(), prompt=prompt, size="1536x1024", quality="low", n=1,
+            model=model or _model(), prompt=prompt, size="1536x1024", quality="low", n=1,
         )
         img = Image.open(io.BytesIO(base64.b64decode(result.data[0].b64_json))).convert("RGB")
-        fit_cover(img).save(path)
+        return to_png_bytes(img)
 
-    def edit(self, prompt: str, reference, path: Path,
-             negative: Optional[str] = None) -> None:
-        """Build the scene on top of one or more reference images. `reference` is
-        a single Path or a list of Paths."""
+    def edit(self, prompt: str, reference,
+             negative: str | None = None, api_key=None,
+             model: str | None = None) -> bytes:
         from openai import OpenAI
 
         if negative:
             prompt = f"{prompt}. Do not include: {negative}."
         refs = list(reference) if isinstance(reference, (list, tuple)) else [reference]
-        client = OpenAI()
-        handles = [open(Path(r), "rb") for r in refs]
+        client = OpenAI(api_key=api_key.decrypt()) if api_key else OpenAI()
+        handles = []
         try:
+            handles = [open(Path(r), "rb") for r in refs]
             result = client.images.edit(
-                model=_model(),
+                model=model or _model(),
                 image=handles if len(handles) > 1 else handles[0],
                 prompt=prompt, size="1536x1024", n=1,
             )
@@ -63,4 +61,4 @@ class GptImageProvider(ImageProvider):
             for h in handles:
                 h.close()
         img = Image.open(io.BytesIO(base64.b64decode(result.data[0].b64_json))).convert("RGB")
-        fit_cover(img).save(path)
+        return to_png_bytes(img)

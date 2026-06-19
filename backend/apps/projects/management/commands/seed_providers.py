@@ -30,7 +30,7 @@ MODELS = [
     _model("anthropic", Capability.PLAN, "claude-haiku-4-5", "Claude Haiku"),
     _model("litellm", Capability.PLAN, "groq/llama-3.3-70b", "Llama 3.3 70B (LiteLLM)", free=True),
     # Image models
-    _model("dashscope", Capability.IMAGE, "qwen-image", "Qwen Image (free)", free=True, default=True),
+    _model("dashscope", Capability.IMAGE, "qwen-image-2.0", "Qwen Image 2.0 (free)", free=True, default=True),
     _model("replicate", Capability.IMAGE, "flux-schnell", "Flux Schnell", free=True),
     _model("pexels", Capability.IMAGE, "pexels", "Pexels Stock", free=True),
     _model("openai", Capability.IMAGE, "gpt-image-1", "GPT Image 1"),

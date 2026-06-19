@@ -2,12 +2,17 @@ import logging
 from pathlib import Path
 
 from django.conf import settings
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.db import transaction
 
 from apps.accounts.models import UserAPIKey
-from apps.projects.constants import Capability, Level, Status
+from apps.projects.constants import Capability, ImageStatus, Level, Stage, Status
 from apps.projects.models import LLMModel, Project, Scene
 from apps.projects.services import publish_event
+
+from pipeline.images import generate_scene_image, get_provider
+from pipeline.schema import ShotPlan
 from pipeline.script_agent import consistency_review, polish_image_prompts
 
 logger = logging.getLogger(__name__)
@@ -92,3 +97,47 @@ def fail_project(project, project_id, stage, exc):
     project.save(update_fields=["error", "updated_at"])
     project.transition_status(Status.FAILED)
     publish_event(project_id, stage, Level.ERROR, error_message[:500])
+
+
+def generate_scene(project, scene, scene_index):
+    project_id = project.id
+    plan = ShotPlan(**project.shot_plan)
+
+    llm = project.image_model
+    if not llm:
+        raise RuntimeError("No image model assigned to project.")
+
+    secure_key = resolve_secure_key(project.owner, llm.provider)
+    provider = get_provider(llm.provider.code, api_key=secure_key)
+
+    scene.image_status = ImageStatus.RUNNING
+    scene.save(update_fields=["image_status", "updated_at"])
+    publish_event(
+        project_id, Stage.IMAGES, Level.INFO,
+        f"Generating image for scene {scene_index} via {provider.name} ({llm.model_id})",
+        scene_index=scene_index,
+    )
+
+    data, used = generate_scene_image(
+        plan, scene_index, provider,
+        fallback=False,
+        api_key=secure_key,
+        model=llm.model_id,
+    )
+
+    if scene.media_path and default_storage.exists(scene.media_path):
+        default_storage.delete(scene.media_path)
+
+    storage_path = f"scenes/{project_id}/scene_{scene_index:02d}.png"
+    saved_name = default_storage.save(storage_path, ContentFile(data))
+
+    scene.media_path = saved_name
+    scene.image_status = ImageStatus.DONE
+    scene.image_provider = used.name
+    scene.save(update_fields=["media_path", "image_status", "image_provider", "updated_at"])
+    publish_event(
+        project_id, Stage.IMAGES, Level.INFO,
+        f"Scene {scene_index} image done via {used.name}",
+        scene_index=scene_index,
+    )
+    return saved_name
