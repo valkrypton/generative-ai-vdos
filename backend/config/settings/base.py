@@ -21,6 +21,7 @@ DEBUG = False
 
 ALLOWED_HOSTS: list[str] = []
 
+
 def env_csv(name, default=""):
     """Comma-separated env var → list, dropping empty entries.
 
@@ -46,6 +47,7 @@ def require_cognito():
     if missing:
         from django.core.exceptions import ImproperlyConfigured
         raise ImproperlyConfigured(f"Missing COGNITO env vars: {', '.join(missing)}")
+
 
 INSTALLED_APPS = [
     "django.contrib.admin",

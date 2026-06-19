@@ -30,7 +30,8 @@ webapp = [
 
 [dependency-groups]
 dev = [
+    "flake8>=7.3.0",
     "pytest>=9.1.0",
-    "ruff>=0.15.13"
+    "ruff>=0.15.13",
 ]
 
