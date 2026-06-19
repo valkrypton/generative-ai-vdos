@@ -10,17 +10,23 @@ import json
 import os
 import urllib.request
 from pathlib import Path
-from typing import Optional
 
 from PIL import Image
 
 from ..env import dashscope_base_url
 from .base import ImageProvider
-from .util import fit_cover
+from .util import to_png_bytes
 
 SIZE = "1664*928"  # native 16:9; fit_cover upscales to 1920x1080
 MAX_PROMPT = 1500  # warn before cutting; most models accept well beyond this
 MAX_REFS = 3  # cap on reference images sent per edit
+
+_BASE_NEGATIVE = ("text, words, captions, typography, letters, "
+                  "watermark, logo, subtitles")
+
+
+def _negative_prompt(extra: str | None = None) -> str:
+    return f"{_BASE_NEGATIVE}, {extra}" if extra else _BASE_NEGATIVE
 
 
 def _gen_model() -> str:
@@ -51,9 +57,9 @@ class QwenImageProvider(ImageProvider):
     def available(self) -> bool:
         return bool(os.environ.get("DASHSCOPE_API_KEY"))
 
-    def _post(self, model: str, content: list, path: Path,
-              parameters: dict) -> None:
-        """POST one multimodal-generation request and save the returned image."""
+    def _post(self, model: str, content: list,
+              parameters: dict, api_key=None) -> bytes:
+        key = api_key.decrypt() if api_key else os.environ["DASHSCOPE_API_KEY"]
         body = {
             "model": model,
             "input": {"messages": [{"role": "user", "content": content}]},
@@ -63,7 +69,7 @@ class QwenImageProvider(ImageProvider):
             f"{dashscope_base_url()}/services/aigc/multimodal-generation/generation",
             data=json.dumps(body).encode(),
             headers={
-                "Authorization": f"Bearer {os.environ['DASHSCOPE_API_KEY']}",
+                "Authorization": f"Bearer {key}",
                 "Content-Type": "application/json",
             },
         )
@@ -72,42 +78,33 @@ class QwenImageProvider(ImageProvider):
         url = out["output"]["choices"][0]["message"]["content"][0]["image"]
         with urllib.request.urlopen(url, timeout=60) as resp:
             img = Image.open(io.BytesIO(resp.read())).convert("RGB")
-        fit_cover(img).save(path)
+        return to_png_bytes(img)
 
-    def generate(self, prompt: str, path: Path, query: Optional[str] = None,
-                 negative: Optional[str] = None, api_key=None) -> None:
+    def generate(self, prompt: str, query: str | None = None,
+                 negative: str | None = None, api_key=None,
+                 model: str | None = None) -> bytes:
         if len(prompt) > MAX_PROMPT:
             print(f"  images: WARNING prompt is {len(prompt)} chars, cutting to "
                   f"{MAX_PROMPT} — some detail at the end will be lost")
-        self._post(_gen_model(), [{"text": prompt[:MAX_PROMPT]}], path, {
+        return self._post(model or _gen_model(), [{"text": prompt[:MAX_PROMPT]}], {
             "size": SIZE,
             "n": 1,
-            # qwen-image excels at text rendering and its prompt extender
-            # loves adding captions — but captions are burned in later from
-            # the TTS timings, so keep generated images text-free.
             "prompt_extend": False,
             "watermark": False,
-            "negative_prompt": ("text, words, captions, typography, letters, "
-                                "watermark, logo, subtitles"
-                                + (f", {negative}" if negative else "")),
-        })
+            "negative_prompt": _negative_prompt(negative),
+        }, api_key=api_key)
 
-    def edit(self, prompt: str, reference, path: Path,
-             negative: Optional[str] = None) -> None:
-        """Re-render to match prompt while keeping the subject(s) looking the same
-        (face, hair, clothing). `reference` is a single Path or a list of Paths
-        (up to 3, for multi-character scenes). Free on the qwen-image-2.0 quota."""
+    def edit(self, prompt: str, reference,
+             negative: str | None = None, api_key=None,
+             model: str | None = None) -> bytes:
         refs = list(reference) if isinstance(reference, (list, tuple)) else [reference]
         content = [{"image": "data:image/png;base64,"
                     + base64.b64encode(Path(r).read_bytes()).decode()}
                    for r in refs[:MAX_REFS]]
         content.append({"text": prompt[:MAX_PROMPT]})
-        neg = ("text, words, captions, typography, letters, "
-               "watermark, logo, subtitles"
-               + (f", {negative}" if negative else ""))
-        self._post(_edit_model(), content, path, {
+        return self._post(model or _edit_model(), content, {
             "n": 1,
             "prompt_extend": False,
             "watermark": False,
-            "negative_prompt": neg,
-        })
+            "negative_prompt": _negative_prompt(negative),
+        }, api_key=api_key)

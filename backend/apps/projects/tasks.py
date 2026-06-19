@@ -8,6 +8,7 @@ from apps.projects.services import publish_event
 from apps.projects.utils import (
     fail_project,
     fetch_project_for_plan,
+    generate_scene,
     get_work_dir,
     handle_transient_error,
     polish_plan,
@@ -15,6 +16,7 @@ from apps.projects.utils import (
     resolve_secure_key,
     save_plan,
 )
+
 from pipeline.schema import ShotPlan
 from pipeline.script_agent import generate_shot_plan, revise_shot_plan
 from pipeline.styles import PRESETS
@@ -30,6 +32,17 @@ _PLAN_TASK_OPTS = dict(
     retry_jitter=True,
     soft_time_limit=5 * 60,
     time_limit=6 * 60,
+)
+
+_IMAGE_TASK_OPTS = dict(
+    bind=True,
+    max_retries=3,
+    autoretry_for=(ConnectionError, TimeoutError),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    soft_time_limit=10 * 60,
+    time_limit=12 * 60,
 )
 
 
@@ -113,44 +126,26 @@ def run_refine_stage(self, project_id, instruction):
     return {"project_id": str(project_id)}
 
 
-@shared_task(
-    bind=True,
-    max_retries=3,
-    autoretry_for=(ConnectionError, TimeoutError),
-    retry_backoff=True,
-    retry_backoff_max=300,
-    retry_jitter=True,
-    soft_time_limit=10 * 60,
-    time_limit=12 * 60,
-)
+@shared_task(**_IMAGE_TASK_OPTS)
 def run_image_stage(self, project_id, scene_index):
     project = Project.objects.select_related(
         "image_model", "image_model__provider", "owner",
     ).get(id=project_id)
     scene = Scene.objects.get(project_id=project_id, index=scene_index)
 
-    scene.image_status = ImageStatus.RUNNING
-    scene.save(update_fields=["image_status", "updated_at"])
-    publish_event(project_id, Stage.IMAGES, Level.INFO, f"Generating image for scene {scene_index}",
-                  scene_index=scene_index)
-
     try:
-        work_dir = get_work_dir(project)
-        work_dir.mkdir(parents=True, exist_ok=True)
-        # TODO: call actual image backend with image_model + secure_key
-        scene.image_status = ImageStatus.DONE
-        scene.save(update_fields=["image_status", "updated_at"])
-        publish_event(project_id, Stage.IMAGES, Level.INFO, f"Scene {scene_index} image done",
-                      scene_index=scene_index)
+        generate_scene(project, scene, scene_index)
     except Exception as exc:
         scene.image_status = ImageStatus.FAILED
         scene.save(update_fields=["image_status", "updated_at"])
         is_transient = isinstance(exc, (ConnectionError, TimeoutError))
-        message = f"Scene {scene_index} failed (will retry)" if is_transient else f"Scene {scene_index} failed: {exc}"
-        publish_event(project_id, Stage.IMAGES, Level.ERROR, message, scene_index=scene_index)
+        msg = (f"Scene {scene_index} failed (will retry)" if is_transient
+               else f"Scene {scene_index} failed: {exc}")
+        publish_event(project_id, Stage.IMAGES, Level.ERROR, msg,
+                      scene_index=scene_index)
         raise
 
-    return {"project_id": project_id, "scene_index": scene_index}
+    return {"project_id": str(project_id), "scene_index": scene_index}
 
 
 @shared_task(
