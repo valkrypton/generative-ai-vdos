@@ -80,7 +80,7 @@ def handle_transient_error(task, project, project_id, stage, exc):
     retries_left = task.max_retries - task.request.retries
     if retries_left > 0:
         logger.warning("%s stage transient error, %d retries left: %s", stage, retries_left, exc)
-        raise exc
+        raise
     fail_project(project, project_id, stage, exc)
 
 

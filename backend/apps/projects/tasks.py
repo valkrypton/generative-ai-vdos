@@ -80,6 +80,11 @@ def run_refine_stage(self, project_id, instruction):
     if project is None:
         return {"project_id": str(project_id)}
 
+    if project.status != Status.REVIEW:
+        publish_event(project_id, Stage.PLAN, Level.WARN,
+                      f"Refine skipped — project is {project.status}, expected REVIEW")
+        return {"project_id": str(project_id)}
+
     try:
         llm = resolve_plan_model(project)
         model_id = llm.model_id
