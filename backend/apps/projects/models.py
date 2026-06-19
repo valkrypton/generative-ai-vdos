@@ -42,7 +42,7 @@ class LLMModel(TimestampMixin):
     def save(self, **kwargs):
         with transaction.atomic():
             if self.is_default:
-                LLMModel.objects.filter(
+                LLMModel.objects.select_for_update().filter(
                     capability=self.capability, is_default=True,
                 ).exclude(pk=self.pk).update(is_default=False)
             super().save(**kwargs)

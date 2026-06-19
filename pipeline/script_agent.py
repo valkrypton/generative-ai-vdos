@@ -182,6 +182,7 @@ _PROVIDER_SDK = {
     "anthropic": ("anthropic", "ANTHROPIC_API_KEY",  None),
     "google":    ("openai",    "GOOGLE_API_KEY",     "https://generativelanguage.googleapis.com/v1beta/openai/"),
     "litellm":   ("openai",    "LITELLM_API_KEY",   None),
+    "dashscope": ("openai",    "DASHSCOPE_API_KEY",  None),
 }
 
 
@@ -192,13 +193,21 @@ def _infer_provider(model: str) -> str:
         return "anthropic"
     if model.startswith("gemini"):
         return "google"
+    if model.startswith("qwen"):
+        return "dashscope"
     return "litellm"
 
 
 def _build_client(model: str, provider: str | None = None, api_key: SecureString | None = None):
     resolved_key = api_key.decrypt() if api_key else None
     resolved_provider = provider or _infer_provider(model)
-    sdk_type, env_var, base_url = _PROVIDER_SDK[resolved_provider]
+    try:
+        sdk_type, env_var, base_url = _PROVIDER_SDK[resolved_provider]
+    except KeyError:
+        raise ValueError(
+            f"Provider {resolved_provider!r} is not supported for plan generation. "
+            f"Supported providers: {', '.join(sorted(_PROVIDER_SDK))}"
+        )
 
     if sdk_type == "anthropic":
         import anthropic
@@ -207,6 +216,9 @@ def _build_client(model: str, provider: str | None = None, api_key: SecureString
     from openai import OpenAI
     if resolved_provider == "litellm":
         base_url = base_url or (os.environ.get("LITELLM_BASE_URL") or "https://litellm.arbisoft.com").rstrip("/")
+    elif resolved_provider == "dashscope":
+        from pipeline.env import dashscope_base_url
+        base_url = dashscope_base_url() + "/compatible-mode/v1"
     return OpenAI(
         api_key=resolved_key or os.environ.get(env_var),
         base_url=base_url,
