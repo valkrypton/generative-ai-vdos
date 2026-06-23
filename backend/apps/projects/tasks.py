@@ -1,5 +1,4 @@
 import logging
-import os
 
 from celery import shared_task
 
@@ -21,8 +20,6 @@ from apps.projects.utils import (
 from pipeline.schema import ShotPlan
 from pipeline.script_agent import generate_shot_plan, revise_shot_plan
 from pipeline.styles import PRESETS
-from apps.projects.utils import get_work_dir, log_event
-from apps.storage import storage_provider
 
 logger = logging.getLogger(__name__)
 
@@ -73,10 +70,11 @@ def run_plan_stage(self, project_id):
 
         publish_event(project_id, Stage.PLAN, Level.INFO, f"Generating shot plan with {model_id}")
         plan = generate_shot_plan(project.prompt, model=model_id, style=style,
+                                  animate=project.animate,
                                   provider=provider_code, api_key=secure_key)
 
         publish_event(project_id, Stage.PLAN, Level.INFO, "Polishing image prompts")
-        plan = polish_plan(plan, model_id, provider_code, secure_key)
+        plan = polish_plan(plan, model_id, provider_code, secure_key, animate=project.animate)
         save_plan(project, plan)
 
         publish_event(project_id, Stage.PLAN, Level.INFO, f"Shot plan ready — {len(plan.scenes)} scenes")
@@ -106,7 +104,18 @@ def run_refine_stage(self, project_id, instruction):
         model_id = llm.model_id
         provider_code = llm.provider.code
         secure_key = resolve_secure_key(project.owner, llm.provider)
-        current_plan = ShotPlan(**project.shot_plan)
+        plan_data = {**(project.shot_plan or {})}
+        plan_data["scenes"] = [
+            {
+                "media_prompt": s.media_prompt,
+                "narration": s.narration,
+                "negative_prompt": s.negative_prompt or None,
+                "animate": s.animate,
+                "on_screen_text": s.on_screen_text or None,
+            }
+            for s in project.scenes.order_by("index")
+        ]
+        current_plan = ShotPlan.model_validate(plan_data)
 
         project.transition_status(Status.PLANNING)
 
@@ -115,7 +124,7 @@ def run_refine_stage(self, project_id, instruction):
                                 provider=provider_code, api_key=secure_key)
 
         publish_event(project_id, Stage.PLAN, Level.INFO, "Polishing image prompts")
-        plan = polish_plan(plan, model_id, provider_code, secure_key)
+        plan = polish_plan(plan, model_id, provider_code, secure_key, animate=project.animate)
         save_plan(project, plan)
 
         publish_event(project_id, Stage.PLAN, Level.INFO, f"Revised plan ready — {len(plan.scenes)} scenes")
@@ -161,22 +170,28 @@ def run_image_stage(self, project_id, scene_index):
     soft_time_limit=15 * 60,
     time_limit=18 * 60,
 )
-def run_voice_stage(self, project_id):
+def run_voice_stage(self, project_id, scene_index=None):
     project = Project.objects.get(id=project_id)
-    publish_event(project_id, Stage.VOICE, Level.INFO, "Generating voiceover")
+    if scene_index is None:
+        publish_event(project_id, Stage.VOICE, Level.INFO, "Generating voiceover")
+    else:
+        publish_event(project_id, Stage.VOICE, Level.INFO, f"Generating voiceover for scene {scene_index}")
 
     try:
         work_dir = get_work_dir(project)
         work_dir.mkdir(parents=True, exist_ok=True)
         # TODO: call actual TTS backend (edge-tts is free, no key needed)
-        publish_event(project_id, Stage.VOICE, Level.INFO, "Voiceover done")
+        if scene_index is None:
+            publish_event(project_id, Stage.VOICE, Level.INFO, "Voiceover done")
+        else:
+            publish_event(project_id, Stage.VOICE, Level.INFO, f"Voiceover done for scene {scene_index}")
     except Exception as exc:
         is_transient = isinstance(exc, (ConnectionError, TimeoutError))
         message = "Voiceover failed (will retry)" if is_transient else f"Voiceover failed: {exc}"
         publish_event(project_id, Stage.VOICE, Level.ERROR, message)
         raise
 
-    return {"project_id": project_id}
+    return {"project_id": project_id, "scene_index": scene_index}
 
 
 @shared_task(
@@ -197,6 +212,8 @@ def run_assemble_stage(self, project_id):
         work_dir = get_work_dir(project)
         work_dir.mkdir(parents=True, exist_ok=True)
         # TODO: call actual FFmpeg assembly (no external API, no key needed)
+        project.stale = False
+        project.save(update_fields=["stale", "updated_at"])
         project.transition_status(Status.DONE)
         publish_event(project_id, Stage.ASSEMBLE, Level.INFO, "Assembly complete")
     except Exception as exc:
