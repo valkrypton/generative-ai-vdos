@@ -24,11 +24,19 @@ export default function SceneGrid({ scenes }: { scenes: Scene[] }) {
         >
           <div className="aspect-video bg-[#171a21] relative flex items-center justify-center">
             {scene.media_path && (scene.media_status === 'DONE' || scene.media_status === 'RUNNING') ? (
-              <img
-                src={scene.media_path}
-                alt={`Scene ${scene.index + 1}`}
-                className="w-full h-full object-cover absolute inset-0"
-              />
+              scene.media_path.split('?')[0].endsWith('.mp4') ? (
+                <video
+                  src={scene.media_path}
+                  playsInline
+                  className="w-full h-full object-cover absolute inset-0"
+                />
+              ) : (
+                <img
+                  src={scene.media_path}
+                  alt={`Scene ${scene.index + 1}`}
+                  className="w-full h-full object-cover absolute inset-0"
+                />
+              )
             ) : null}
             {scene.media_status === 'RUNNING' ? (
               <div className="absolute inset-0 flex items-center justify-center bg-black/30">

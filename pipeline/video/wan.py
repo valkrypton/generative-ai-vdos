@@ -41,7 +41,7 @@ class WanProvider(VideoProvider):
     def available(self) -> bool:
         return bool(os.environ.get("DASHSCOPE_API_KEY"))
 
-    def submit(self, prompt: str, image_path: Path, api_key) -> str:
+    def submit(self, prompt: str, image_path: Path, api_key=None) -> str:
         configure_dashscope_sdk()
         if api_key:
             dashscope.api_key = api_key.decrypt()

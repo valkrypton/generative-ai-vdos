@@ -106,6 +106,12 @@ The submit logic is thin enough to live inline in `run_video_stage` — no separ
 
 - No new API endpoint to trigger `run_video_stage` (triggering mechanism follows however `run_image_stage` is triggered)
 - No `wan_task_id` field on Scene (task_ids are in-memory only)
-- No changes to `pipeline/video/` code
-- No changes to `run_voice_stage` or `run_assemble_stage` (stubs remain as-is)
-- No frontend changes
+
+## What Was Added Beyond Original Spec
+
+- `pipeline/video/wan.py` migrated to DashScope SDK; `configure_dashscope_sdk()` added to `pipeline/env.py`
+- `pipeline/images/qwen_image.py` migrated to DashScope SDK
+- `run_voice_stage` and `run_assemble_stage` gained early-return guards to break Celery chain on upstream FAILED status
+- `ImageStatus` renamed to `MediaStatus`; `image_status`/`image_provider` renamed to `media_status`/`media_provider` via `0002_rename_image_fields` migration
+- Frontend updated to use `media_status`; scene-grid and done-view render `.mp4` scenes as `<video>` elements
+- Delete button added to generating and failed project views; home project list cache invalidated on mutation

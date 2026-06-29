@@ -40,7 +40,7 @@ export default function ProjectForm() {
   const [isPending, startTransition] = useTransition()
   const [prompt, setPrompt] = useState('')
   const [imageModel, setImageModel] = useState('qwen-image-2.0')
-  const [videModel, setVideModel] = useState('wan2.1-kf2v-plus')
+  const [videModel, setVideModel] = useState('wan2.2-i2v-flash')
   const [voice, setVoice] = useState('en-US-AndrewNeural')
   const [music, setMusic] = useState('calm')
   const [animate, setAnimate] = useState(false)
@@ -122,7 +122,7 @@ export default function ProjectForm() {
           </select>
         </div>
         <div>
-          <label className="block text-xs text-[#9aa3b2] mb-1.5">Vide model</label>
+          <label className="block text-xs text-[#9aa3b2] mb-1.5">Video model</label>
           <select
             value={videModel}
             onChange={e => setVideModel(e.target.value)}
