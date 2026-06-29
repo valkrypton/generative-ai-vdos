@@ -22,7 +22,7 @@ TRANSITIONS: dict[str, set[str]] = {
 }
 
 
-class ImageStatus(models.TextChoices):
+class MediaStatus(models.TextChoices):
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     DONE = "DONE"

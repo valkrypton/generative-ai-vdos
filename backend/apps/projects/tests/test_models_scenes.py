@@ -2,7 +2,7 @@ from django.test import TestCase
 from django.db import IntegrityError
 from apps.accounts.models import UserProfile
 from apps.projects.models import Project, Scene
-from apps.projects.constants import ImageStatus
+from apps.projects.constants import MediaStatus
 
 
 def make_project():
@@ -18,9 +18,9 @@ class SceneTest(TestCase):
         s = Scene.objects.create(project=self.project, index=0)
         self.assertEqual(s.project, self.project)
         self.assertEqual(s.index, 0)
-        self.assertEqual(s.image_status, ImageStatus.PENDING)
+        self.assertEqual(s.media_status, MediaStatus.PENDING)
         self.assertFalse(s.media_path)   # empty FileField is falsy
-        self.assertEqual(s.image_provider, "")
+        self.assertEqual(s.media_provider, "")
 
     def test_unique_together_project_index(self):
         Scene.objects.create(project=self.project, index=0)

@@ -35,3 +35,10 @@ def dashscope_base_url() -> str:
            or os.environ.get("DASHSCOPE_BASE_URL")
            or "https://dashscope-intl.aliyuncs.com/api/v1")
     return url.rstrip("/")
+
+
+def configure_dashscope_sdk() -> None:
+    """Apply API key and base URL to the dashscope SDK module globals."""
+    import dashscope
+    dashscope.api_key = os.environ.get("DASHSCOPE_API_KEY") or ""
+    dashscope.base_http_api_url = dashscope_base_url()

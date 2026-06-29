@@ -5,6 +5,7 @@ from apps.projects.tasks import (
     run_image_stage,
     mark_pipeline_failed,
     run_assemble_stage,
+    run_video_stage,
     run_voice_stage,
 )
 
@@ -41,6 +42,12 @@ def run_images(project_id, scene_count):
         group(run_image_stage.s(pid, i) for i in range(scene_count)),
         project_id,
     )
+
+
+def run_video(project_id):
+    """Dispatch batch video animation for all animate=True scenes."""
+    pid = str(project_id)
+    return _dispatch(run_video_stage.s(pid), project_id)
 
 
 def run_voice(project_id):

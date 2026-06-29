@@ -21,10 +21,14 @@ const VOICES = [
 // Presigned S3 URLs already contain '?' (new signature per request) so the browser
 // never caches them across regens. Local-dev URLs have no '?' — append updated_at
 // so the browser treats the re-generated image as a distinct resource.
-function stableImageSrc(scene: Scene): string | undefined {
+function stableMediaSrc(scene: Scene): string | undefined {
   if (!scene.media_path) return undefined
   if (scene.media_path.includes('?')) return scene.media_path
   return `${scene.media_path}?v=${encodeURIComponent(scene.updated_at ?? '')}`
+}
+
+function isVideo(path: string): boolean {
+  return path.split('?')[0].endsWith('.mp4')
 }
 
 const IMG_STATUS_COLOR: Record<string, string> = {
@@ -48,15 +52,15 @@ export default function DoneView({ project, onUpdate }: Props) {
   function handleDelete() {
     startDelete(async () => {
       const res = await fetch(`/api/projects/${project.id}/`, { method: 'DELETE' })
-      if (res.status === 204) router.push('/home')
+      if (res.status === 204) { router.refresh(); router.push('/home') }
     })
   }
 
   // stable refs so React.memo on DoneSceneCard doesn't re-render siblings
   const updateSceneStatus = useCallback(
-    (index: number, image_status: Scene['image_status']) => {
+    (index: number, media_status: Scene['media_status']) => {
       setScenes(prev =>
-        prev.map(s => (s.index === index ? { ...s, image_status } : s)),
+        prev.map(s => (s.index === index ? { ...s, media_status } : s)),
       )
     },
     [],
@@ -75,7 +79,7 @@ export default function DoneView({ project, onUpdate }: Props) {
       await fetch(`/api/projects/${project.id}/regenerate-images/`, {
         method: 'POST',
       })
-      setScenes(prev => prev.map(s => ({ ...s, image_status: 'RUNNING' as const })))
+      setScenes(prev => prev.map(s => ({ ...s, media_status: 'RUNNING' as const })))
       onUpdate({ stale: true })
     })
   }
@@ -180,7 +184,7 @@ const DoneSceneCard = memo(function DoneSceneCard({
   scene: Scene
   projectId: string
   defaultVoice: string
-  onStatusChange: (index: number, status: Scene['image_status']) => void
+  onStatusChange: (index: number, status: Scene['media_status']) => void
   onSceneUpdate: (updated: Scene) => void
   onSetStale: () => void
 }) {
@@ -194,7 +198,7 @@ const DoneSceneCard = memo(function DoneSceneCard({
 
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
 
-  const imgColor = IMG_STATUS_COLOR[scene.image_status] ?? '#9aa3b2'
+  const imgColor = IMG_STATUS_COLOR[scene.media_status] ?? '#9aa3b2'
 
   function handleRegen() {
     startRegen(async () => {
@@ -211,12 +215,12 @@ const DoneSceneCard = memo(function DoneSceneCard({
           const res = await fetch(`/api/projects/${projectId}/scenes/${scene.index}/`)
           if (!res.ok) return
           const updated: Scene = await res.json()
-          onStatusChange(scene.index, updated.image_status)
-          if (updated.image_status === 'DONE' || updated.image_status === 'FAILED') {
+          onStatusChange(scene.index, updated.media_status)
+          if (updated.media_status === 'DONE' || updated.media_status === 'FAILED') {
             clearInterval(pollRef.current!)
             pollRef.current = null
             onSceneUpdate(updated)
-            if (updated.image_status === 'DONE') onSetStale()
+            if (updated.media_status === 'DONE') onSetStale()
           }
         } catch { /* keep polling */ }
       }, 2000)
@@ -244,16 +248,31 @@ const DoneSceneCard = memo(function DoneSceneCard({
       >
         {/* Thumbnail */}
         <div className="w-16 h-10 rounded bg-[#171a21] shrink-0 overflow-hidden flex items-center justify-center">
-          {scene.media_path && scene.image_status === 'DONE' ? (
-            <img
-              src={stableImageSrc(scene)}
-              alt=""
-              className="w-full h-full object-cover"
-            />
-          ) : scene.image_status === 'RUNNING' ? (
+          {scene.media_path && scene.media_status === 'DONE' ? (
+            isVideo(scene.media_path) ? (
+              <div className="relative w-full h-full">
+                <video
+                  src={stableMediaSrc(scene)}
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-5 h-5 rounded-full bg-black/50 flex items-center justify-center">
+                    <span className="text-white text-[8px] pl-0.5">▶</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <img
+                src={stableMediaSrc(scene)}
+                alt=""
+                className="w-full h-full object-cover"
+              />
+            )
+          ) : scene.media_status === 'RUNNING' ? (
             <div className="w-4 h-4 rounded-full border border-[#f0a35e] border-t-transparent animate-spin" />
           ) : (
-            <span className="text-[#4a5568] text-[10px]">{scene.image_status.toLowerCase()}</span>
+            <span className="text-[#4a5568] text-[10px]">{scene.media_status.toLowerCase()}</span>
           )}
         </div>
 
@@ -293,15 +312,23 @@ const DoneSceneCard = memo(function DoneSceneCard({
           <div className="relative z-10 p-4 space-y-5">
             {/* Full image */}
             <div className="aspect-video bg-[#171a21] rounded-lg overflow-hidden flex items-center justify-center">
-              {scene.media_path && scene.image_status === 'DONE' ? (
-                <img
-                  src={stableImageSrc(scene)}
-                  alt={`Scene ${scene.index + 1}`}
-                  className="w-full h-full object-cover"
-                />
-              ) : scene.image_status === 'RUNNING' ? (
+              {scene.media_path && scene.media_status === 'DONE' ? (
+                isVideo(scene.media_path) ? (
+                  <video
+                    src={stableMediaSrc(scene)}
+                    controls autoPlay muted loop playsInline
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <img
+                    src={stableMediaSrc(scene)}
+                    alt={`Scene ${scene.index + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                )
+              ) : scene.media_status === 'RUNNING' ? (
                 <div className="w-7 h-7 rounded-full border-2 border-[#f0a35e] border-t-transparent animate-spin" />
-              ) : scene.image_status === 'FAILED' ? (
+              ) : scene.media_status === 'FAILED' ? (
                 <span className="text-[#f06a6a] text-2xl">✕</span>
               ) : (
                 <span className="text-[#4a5568] text-xs">pending</span>
@@ -322,7 +349,7 @@ const DoneSceneCard = memo(function DoneSceneCard({
                 onClick={handleRegen}
                 className="bg-transparent border border-[#2a2f3a] text-[#e7e9ee] text-xs px-3 py-2 rounded-lg hover:bg-[#252a35] disabled:opacity-50"
               >
-                {isRegenerating ? 'Queuing…' : 'Regenerate image'}
+                {isRegenerating ? 'Queuing…' : 'Regenerate scene'}
               </Button>
             </div>
 

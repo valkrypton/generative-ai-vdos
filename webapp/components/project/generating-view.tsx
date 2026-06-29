@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { Project, Scene } from '@/lib/project-types'
+import { Button } from '@/components/ui/button'
 import SceneGrid from './scene-grid'
 import StatusPill from './status-pill'
 
@@ -24,11 +26,21 @@ const LEVEL_COLOR: Record<string, string> = {
 }
 
 export default function GeneratingView({ project, onUpdate }: Props) {
+  const router = useRouter()
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [scenes, setScenes] = useState<Scene[]>(project.scenes)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [isDeleting, startDelete] = useTransition()
   const logEndRef = useRef<HTMLDivElement>(null)
   const onUpdateRef = useRef(onUpdate)
   onUpdateRef.current = onUpdate
+
+  function handleDelete() {
+    startDelete(async () => {
+      const res = await fetch(`/api/projects/${project.id}/`, { method: 'DELETE' })
+      if (res.status === 204) { router.refresh(); router.push('/home') }
+    })
+  }
 
   useEffect(() => {
     let done = false
@@ -83,8 +95,33 @@ export default function GeneratingView({ project, onUpdate }: Props) {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-3">
         <StatusPill status="GENERATING" />
+        {confirmDelete ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-[#9aa3b2]">Delete this project?</span>
+            <Button
+              disabled={isDeleting}
+              onClick={handleDelete}
+              className="bg-[#f06a6a] text-white text-xs px-3 py-1.5 rounded-lg hover:bg-[#d95858] disabled:opacity-50"
+            >
+              {isDeleting ? 'Deleting…' : 'Yes, delete'}
+            </Button>
+            <Button
+              onClick={() => setConfirmDelete(false)}
+              className="bg-transparent border border-[#2a2f3a] text-[#e7e9ee] text-xs px-3 py-1.5 rounded-lg hover:bg-[#1e222b]"
+            >
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <Button
+            onClick={() => setConfirmDelete(true)}
+            className="bg-transparent border border-[#f06a6a]/40 text-[#f06a6a] text-xs px-3 py-1.5 rounded-lg hover:bg-[#f06a6a]/10"
+          >
+            Delete project
+          </Button>
+        )}
       </div>
 
       {/* Side-by-side on lg+: log panel left, scene grid right */}

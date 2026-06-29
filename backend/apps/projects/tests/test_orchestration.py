@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from django.test import TestCase
 
-from apps.projects.constants import ImageStatus, Status
+from apps.projects.constants import MediaStatus, Status
 from apps.projects.models import Scene
 from apps.projects.orchestration import run_assembly, run_images, run_voice
 from apps.projects.tests.helpers import make_generating_project
@@ -12,10 +12,10 @@ from apps.projects.tests.helpers import make_generating_project
 
 def _mock_generate_scene(project, scene, scene_index):
     """Simulate what generate_scene does on success: mark scene DONE."""
-    scene.image_status = ImageStatus.DONE
+    scene.media_status = MediaStatus.DONE
     scene.media_path = f"scenes/test/scene_{scene_index:02d}.png"
-    scene.image_provider = "placeholder"
-    scene.save(update_fields=["media_path", "image_status", "image_provider", "updated_at"])
+    scene.media_provider = "placeholder"
+    scene.save(update_fields=["media_path", "media_status", "media_provider", "updated_at"])
     return scene.media_path
 
 
@@ -27,7 +27,7 @@ class RunImagesTest(TestCase):
         run_images(project.id, 2)
 
         for scene in Scene.objects.filter(project=project):
-            self.assertEqual(scene.image_status, ImageStatus.DONE)
+            self.assertEqual(scene.media_status, MediaStatus.DONE)
 
     @patch("apps.projects.tasks.generate_scene", side_effect=RuntimeError("boom"))
     def test_images_failure_marks_project_failed(self, mock_gen):

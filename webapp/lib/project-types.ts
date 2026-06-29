@@ -36,8 +36,8 @@ export interface Scene {
   on_screen_text: string
   negative_prompt: string
   media_path: string
-  image_status: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED'
-  image_provider: string
+  media_status: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED'
+  media_provider: string
   created_at: string
   updated_at: string
 }
@@ -69,5 +69,5 @@ export interface SSEEvent {
   ts: string
   project_status: ProjectStatus
   scene_index: number | null
-  image_status: Scene['image_status'] | null
+  media_status: Scene['media_status'] | null
 }

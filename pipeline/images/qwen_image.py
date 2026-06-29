@@ -1,4 +1,4 @@
-"""Qwen text-to-image via Alibaba Model Studio (DashScope REST API).
+"""Qwen text-to-image via Alibaba Model Studio (DashScope SDK).
 
 Uses the same DASHSCOPE_API_KEY (and optional DASHSCOPE_API_URL workspace
 endpoint) as the Wan video backend. Model Studio's new-user free quota covers
@@ -6,14 +6,14 @@ the qwen-image models, so images are $0 while it lasts.
 """
 import base64
 import io
-import json
 import os
 import urllib.request
 from pathlib import Path
 
 from PIL import Image
+from dashscope import MultiModalConversation
 
-from ..env import dashscope_base_url
+from ..env import configure_dashscope_sdk
 from .base import ImageProvider
 from .util import to_png_bytes
 
@@ -59,24 +59,18 @@ class QwenImageProvider(ImageProvider):
 
     def _post(self, model: str, content: list,
               parameters: dict, api_key=None) -> bytes:
-        key = api_key.decrypt() if api_key else os.environ["DASHSCOPE_API_KEY"]
-        body = {
-            "model": model,
-            "input": {"messages": [{"role": "user", "content": content}]},
-            "parameters": parameters,
-        }
-        req = urllib.request.Request(
-            f"{dashscope_base_url()}/services/aigc/multimodal-generation/generation",
-            data=json.dumps(body).encode(),
-            headers={
-                "Authorization": f"Bearer {key}",
-                "Content-Type": "application/json",
-            },
+        configure_dashscope_sdk()
+        key = api_key.decrypt() if api_key else os.environ.get("DASHSCOPE_API_KEY")
+        rsp = MultiModalConversation.call(
+            model=model,
+            messages=[{"role": "user", "content": content}],
+            api_key=key,
+            **parameters,
         )
-        with urllib.request.urlopen(req, timeout=180) as resp:
-            out = json.loads(resp.read())
-        url = out["output"]["choices"][0]["message"]["content"][0]["image"]
-        with urllib.request.urlopen(url, timeout=60) as resp:
+        if rsp.status_code != 200:
+            raise RuntimeError(f"qwen image failed [{rsp.code}]: {rsp.message}")
+        image_url = rsp.output.choices[0].message.content[0]["image"]
+        with urllib.request.urlopen(image_url, timeout=60) as resp:
             img = Image.open(io.BytesIO(resp.read())).convert("RGB")
         return to_png_bytes(img)
 

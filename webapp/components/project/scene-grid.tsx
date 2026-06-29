@@ -23,20 +23,30 @@ export default function SceneGrid({ scenes }: { scenes: Scene[] }) {
           className="bg-[#1e222b] border border-[#2a2f3a] rounded-[10px] overflow-hidden"
         >
           <div className="aspect-video bg-[#171a21] relative flex items-center justify-center">
-            {scene.media_path && scene.image_status === 'DONE' ? (
-              <img
-                src={scene.media_path}
-                alt={`Scene ${scene.index + 1}`}
-                className="w-full h-full object-cover absolute inset-0"
-              />
+            {scene.media_path && (scene.media_status === 'DONE' || scene.media_status === 'RUNNING') ? (
+              scene.media_path.split('?')[0].endsWith('.mp4') ? (
+                <video
+                  src={scene.media_path}
+                  playsInline
+                  className="w-full h-full object-cover absolute inset-0"
+                />
+              ) : (
+                <img
+                  src={scene.media_path}
+                  alt={`Scene ${scene.index + 1}`}
+                  className="w-full h-full object-cover absolute inset-0"
+                />
+              )
             ) : null}
-            {scene.image_status === 'RUNNING' ? (
-              <div className="w-6 h-6 rounded-full border-2 border-[#f0a35e] border-t-transparent animate-spin" />
+            {scene.media_status === 'RUNNING' ? (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                <div className="w-6 h-6 rounded-full border-2 border-[#f0a35e] border-t-transparent animate-spin" />
+              </div>
             ) : null}
-            {scene.image_status === 'FAILED' ? (
+            {scene.media_status === 'FAILED' ? (
               <span className="text-[#f06a6a] text-2xl">✕</span>
             ) : null}
-            {scene.image_status === 'PENDING' ? (
+            {scene.media_status === 'PENDING' ? (
               <span className="text-[#4a5568] text-xs">waiting…</span>
             ) : null}
           </div>
@@ -46,10 +56,10 @@ export default function SceneGrid({ scenes }: { scenes: Scene[] }) {
             </span>
             <span
               className="text-xs"
-              style={{ color: STATUS_COLOR[scene.image_status] ?? '#9aa3b2' }}
+              style={{ color: STATUS_COLOR[scene.media_status] ?? '#9aa3b2' }}
             >
-              {STATUS_LABEL[scene.image_status] ??
-                scene.image_status.toLowerCase()}
+              {STATUS_LABEL[scene.media_status] ??
+                scene.media_status}
             </span>
           </div>
         </div>
