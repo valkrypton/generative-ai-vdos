@@ -2,10 +2,11 @@ import logging
 
 from celery import shared_task
 
-from apps.projects.constants import ImageStatus, Level, Stage, Status
+from apps.projects.constants import MediaStatus, Level, Stage, Status
 from apps.projects.models import Project, Scene
 from apps.projects.services import publish_event
 from apps.projects.utils import (
+    animate_scene,
     fail_project,
     fetch_project_for_plan,
     generate_scene,
@@ -43,6 +44,13 @@ _IMAGE_TASK_OPTS = dict(
     retry_jitter=True,
     soft_time_limit=10 * 60,
     time_limit=12 * 60,
+)
+
+_VIDEO_TASK_OPTS = dict(
+    bind=True,
+    max_retries=0,
+    soft_time_limit=30 * 60,
+    time_limit=35 * 60,
 )
 
 
@@ -148,14 +156,51 @@ def run_image_stage(self, project_id, scene_index):
     try:
         generate_scene(project, scene, scene_index)
     except Exception as exc:
-        scene.image_status = ImageStatus.FAILED
-        scene.save(update_fields=["image_status", "updated_at"])
+        scene.media_status = MediaStatus.FAILED
+        scene.save(update_fields=["media_status", "updated_at"])
         is_transient = isinstance(exc, (ConnectionError, TimeoutError))
         msg = (f"Scene {scene_index} failed (will retry)" if is_transient
                else f"Scene {scene_index} failed: {exc}")
         publish_event(project_id, Stage.IMAGES, Level.ERROR, msg,
                       scene_index=scene_index)
         raise
+
+    return {"project_id": str(project_id), "scene_index": scene_index}
+
+
+@shared_task(**_VIDEO_TASK_OPTS)
+def run_video_stage(self, project_id, scene_index=None):
+    project = Project.objects.select_related(
+        "video_model", "video_model__provider", "owner",
+    ).get(id=project_id)
+
+    if not project.video_model:
+        fail_project(project, project_id, Stage.VIDEO, RuntimeError("No video model configured"))
+        return {"project_id": str(project_id)}
+
+    if scene_index is not None:
+        animated = list(Scene.objects.filter(project=project, index=scene_index, animate=True))
+    else:
+        animated = list(Scene.objects.filter(project=project, animate=True).order_by("index"))
+
+    if not animated:
+        publish_event(project_id, Stage.VIDEO, Level.INFO, "No animated scenes — skipping")
+        return {"project_id": str(project_id)}
+
+    for scene in animated:
+        try:
+            animate_scene(project, scene, scene.index)
+        except Exception as exc:
+            logger.error("Video scene %s failed: %s", scene.index, exc, exc_info=True)
+            scene.media_status = MediaStatus.FAILED
+            scene.save(update_fields=["media_status", "updated_at"])
+            publish_event(project_id, Stage.VIDEO, Level.ERROR,
+                          f"Scene {scene.index} failed: {exc}")
+
+    if scene_index is None:
+        if not Scene.objects.filter(project=project, animate=True, media_status=MediaStatus.DONE).exists():
+            fail_project(project, project_id, Stage.VIDEO,
+                         RuntimeError("All animated scene submissions failed"))
 
     return {"project_id": str(project_id), "scene_index": scene_index}
 
@@ -172,6 +217,8 @@ def run_image_stage(self, project_id, scene_index):
 )
 def run_voice_stage(self, project_id, scene_index=None):
     project = Project.objects.get(id=project_id)
+    if project.status == Status.FAILED:
+        return {"project_id": project_id, "scene_index": scene_index}
     if scene_index is None:
         publish_event(project_id, Stage.VOICE, Level.INFO, "Generating voiceover")
     else:
@@ -206,6 +253,8 @@ def run_voice_stage(self, project_id, scene_index=None):
 )
 def run_assemble_stage(self, project_id):
     project = Project.objects.get(id=project_id)
+    if project.status == Status.FAILED:
+        return {"project_id": project_id}
     publish_event(project_id, Stage.ASSEMBLE, Level.INFO, "Assembling final video")
 
     try:

@@ -1,5 +1,6 @@
 import logging
 import tempfile
+import time
 from pathlib import Path
 
 from django.conf import settings
@@ -7,13 +8,18 @@ from apps.storage import storage_provider
 from django.db import transaction
 
 from apps.accounts.models import UserAPIKey
-from apps.projects.constants import Capability, ImageStatus, Level, Stage, Status
+from apps.projects.constants import Capability, MediaStatus, Level, Stage, Status
 from apps.projects.models import LLMModel, Project, Scene
 from apps.projects.services import publish_event
 
 from pipeline.images import generate_scene_image, get_provider
 from pipeline.schema import ShotPlan
 from pipeline.script_agent import consistency_review, polish_image_prompts
+from pipeline.video import _motion_prompt
+from pipeline.video.wan import WanProvider
+
+_VIDEO_POLL_INTERVAL = 15       # seconds between poll ticks
+_VIDEO_POLL_TIMEOUT = 15 * 60   # max wait per batch
 
 logger = logging.getLogger(__name__)
 
@@ -118,19 +124,17 @@ def generate_scene(project, scene, scene_index):
     plan = ShotPlan.model_validate(plan_data)
 
     llm = project.image_model
-    if not llm:
-        raise RuntimeError("No image model assigned to project.")
 
     secure_key = resolve_secure_key(project.owner, llm.provider)
     provider = get_provider(llm.provider.code, api_key=secure_key)
 
-    scene.image_status = ImageStatus.RUNNING
-    scene.save(update_fields=["image_status", "updated_at"])
+    scene.media_status = MediaStatus.RUNNING
+    scene.save(update_fields=["media_status", "updated_at"])
     publish_event(
         project_id, Stage.IMAGES, Level.INFO,
         f"Generating image for scene {scene_index} via {provider.name} ({llm.model_id})",
         scene_index=scene_index,
-        image_status=ImageStatus.RUNNING,
+        media_status=MediaStatus.RUNNING,
     )
 
     data, used = generate_scene_image(
@@ -151,23 +155,81 @@ def generate_scene(project, scene, scene_index):
             storage_provider.upload(scene.media_path, tmp_path, save=False)
     except Exception as e:
         logger.error("Failed to upload image to storage: %s", e)
-        scene.image_status = ImageStatus.FAILED
-        scene.save(update_fields=["image_status", "updated_at"])
+        scene.media_status = MediaStatus.FAILED
+        scene.save(update_fields=["media_status", "updated_at"])
         publish_event(
             project_id, Stage.IMAGES, Level.ERROR,
             f"Failed to upload image for scene {scene_index}: {e}",
             scene_index=scene_index,
-            image_status=ImageStatus.FAILED,
+            media_status=MediaStatus.FAILED,
         )
         raise
 
-    scene.image_status = ImageStatus.DONE
-    scene.image_provider = used.name
-    scene.save(update_fields=["media_path", "image_status", "image_provider", "updated_at"])
+    scene.media_status = MediaStatus.DONE
+    scene.media_provider = used.name
+    scene.save(update_fields=["media_path", "media_status", "media_provider", "updated_at"])
     publish_event(
         project_id, Stage.IMAGES, Level.INFO,
         f"Scene {scene_index} image done via {used.name}",
         scene_index=scene_index,
-        image_status=ImageStatus.DONE,
+        media_status=MediaStatus.DONE,
     )
     return scene.media_path.name
+
+
+def animate_scene(project, scene, scene_index):
+    project_id = project.id
+    secure_key = resolve_secure_key(project.owner, project.video_model.provider)
+
+    plan_data = {**(project.shot_plan or {})}
+    plan_data["scenes"] = [
+        {
+            "media_prompt": s.media_prompt,
+            "narration": s.narration,
+            "negative_prompt": s.negative_prompt or None,
+            "animate": s.animate,
+            "on_screen_text": s.on_screen_text or None,
+        }
+        for s in Scene.objects.filter(project=project).order_by("index")
+    ]
+    plan = ShotPlan.model_validate(plan_data)
+    provider = WanProvider()
+
+    scene.media_status = MediaStatus.RUNNING
+    scene.save(update_fields=["media_status", "updated_at"])
+    publish_event(project_id, Stage.VIDEO, Level.INFO,
+                  f"Animating scene {scene_index}",
+                  scene_index=scene_index, media_status=MediaStatus.RUNNING)
+
+    filename = f"scene_{scene_index:02d}.png"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir) / filename
+        with storage_provider.storage.open(scene.media_path.name, "rb") as f:
+            tmp_path.write_bytes(f.read())
+        prompt = _motion_prompt(plan, plan.scenes[scene_index])
+        task_id = provider.submit(prompt, tmp_path, secure_key)
+
+    publish_event(project_id, Stage.VIDEO, Level.INFO,
+                  f"Scene {scene_index} submitted (task {task_id})")
+
+    deadline = time.time() + _VIDEO_POLL_TIMEOUT
+    while time.time() < deadline:
+        time.sleep(_VIDEO_POLL_INTERVAL)
+        url = provider.poll(task_id)
+        if url:
+            filename = f"scene_{scene_index:02d}.mp4"
+            with tempfile.TemporaryDirectory() as tmpdir:
+                mp4_path = Path(tmpdir) / filename
+                provider.download(url, mp4_path)
+                if scene.media_path:
+                    scene.media_path.delete(save=False)
+                storage_provider.upload(scene.media_path, mp4_path, save=False)
+            scene.media_status = MediaStatus.DONE
+            scene.media_provider = provider.name
+            scene.save(update_fields=["media_path", "media_status", "media_provider", "updated_at"])
+            publish_event(project_id, Stage.VIDEO, Level.INFO,
+                          f"Scene {scene_index} animated via {provider.name}",
+                          scene_index=scene_index, media_status=MediaStatus.DONE)
+            return
+
+    raise RuntimeError(f"Scene {scene_index} timed out after {_VIDEO_POLL_TIMEOUT // 60} min")

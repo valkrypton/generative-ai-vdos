@@ -28,7 +28,7 @@ def _fake_shot_plan(scene_count=2):
     for _ in range(scene_count):
         s = MagicMock()
         s.narration = "test narration"
-        s.image_prompt = "a test image"
+        s.media_prompt = "a test image"
         s.on_screen_text = ""
         s.negative_prompt = ""
         s.animate = False
@@ -54,7 +54,7 @@ class RunPlanStageTest(TestCase):
 
         mock_gen.assert_called_once_with(
             project.prompt, model=llm.model_id, style=None,
-            provider=llm.provider.code, api_key=None,
+            animate=False, provider=llm.provider.code, api_key=None,
         )
         project.refresh_from_db()
         self.assertEqual(project.status, Status.REVIEW)

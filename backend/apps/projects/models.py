@@ -7,7 +7,7 @@ from apps.core.models import TimestampMixin
 from apps.projects.constants import (
     TRANSITIONS,
     Capability,
-    ImageStatus,
+    MediaStatus,
     Level,
     MusicMood,
     NarratorVoice,
@@ -65,7 +65,7 @@ def video_upload_path(instance: "Project", filename) -> str:
 
 class Project(TimestampMixin):
     Status = Status
-    ImageStatus = ImageStatus
+    MediaStatus = MediaStatus
 
     id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     owner          = models.ForeignKey(
@@ -120,7 +120,7 @@ class Project(TimestampMixin):
 
 
 class Scene(TimestampMixin):
-    ImageStatus = ImageStatus
+    MediaStatus = MediaStatus
 
     project        = models.ForeignKey(
         Project, on_delete=models.CASCADE, related_name="scenes"
@@ -132,10 +132,10 @@ class Scene(TimestampMixin):
     negative_prompt = models.TextField(max_length=256, blank=True, default="")
     animate        = models.BooleanField(default=False)
     media_path     = models.FileField(upload_to=scene_media_upload_path, blank=True, default="")
-    image_status   = models.CharField(
-        max_length=20, choices=ImageStatus.choices, default=ImageStatus.PENDING
+    media_status   = models.CharField(
+        max_length=20, choices=MediaStatus.choices, default=MediaStatus.PENDING
     )
-    image_provider = models.CharField(max_length=50, blank=True, default="")
+    media_provider = models.CharField(max_length=50, blank=True, default="")
 
     class Meta:
         constraints = [

@@ -103,7 +103,10 @@ export default function PlanEditor({ project, onUpdate }: Props) {
         method: 'POST',
       })
       if (res.ok || res.status === 202) {
-        onUpdate({ status: 'GENERATING' })
+        onUpdate({status: 'GENERATING'})
+      } else {
+        const data: { detail?: string } = await res.json().catch(() => ({}))
+        setPatchError(data.detail ?? 'Approve failed. Please try again.')
       }
     })
   }

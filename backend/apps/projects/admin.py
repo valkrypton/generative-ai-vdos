@@ -14,7 +14,7 @@ class LLMModelAdmin(admin.ModelAdmin):
 class SceneInline(admin.TabularInline):
     model = Scene
     extra = 0
-    readonly_fields = ["index", "narration", "media_prompt", "image_status", "image_provider", "media_path"]
+    readonly_fields = ["index", "narration", "media_prompt", "media_status", "media_provider", "media_path"]
     fields = readonly_fields
 
 

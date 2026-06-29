@@ -9,6 +9,13 @@ const IMAGE_MODELS = [
   { value: 'flux-schnell',   label: 'Flux Schnell — free' },
   { value: 'pexels',         label: 'Pexels Stock — free' },
   { value: 'gpt-image-1',    label: 'GPT Image 1 — paid' },
+  { value: 'qwen-image-max-2025-12-30',     label: 'Qwen Image -- Free'}
+]
+
+const VIDEO_MODELS = [
+  { value: 'wan2.1-i2v-plus',  label: 'Wan2.1 Plus I2V — paid' },
+  { value: 'wan2.2-i2v-flash', label: 'Wan Flash — paid' },
+  { value: 'wan2.1-i2v-turbo', label: 'Wan Turbo — paid' },
 ]
 
 const VOICES = [
@@ -33,6 +40,7 @@ export default function ProjectForm() {
   const [isPending, startTransition] = useTransition()
   const [prompt, setPrompt] = useState('')
   const [imageModel, setImageModel] = useState('qwen-image-2.0')
+  const [videModel, setVideModel] = useState('wan2.1-kf2v-plus')
   const [voice, setVoice] = useState('en-US-AndrewNeural')
   const [music, setMusic] = useState('calm')
   const [animate, setAnimate] = useState(false)
@@ -58,6 +66,7 @@ export default function ProjectForm() {
           animate,
         }
         body.image_model = imageModel
+        body.video_model = videModel
 
         const res = await fetch('/api/projects/', {
           method: 'POST',
@@ -67,6 +76,7 @@ export default function ProjectForm() {
 
         if (res.status === 201) {
           const data = await res.json()
+          router.refresh()
           router.push(`/projects/${data.id}`)
           return
         }
@@ -107,6 +117,18 @@ export default function ProjectForm() {
             className={SELECT_CLASS}
           >
             {IMAGE_MODELS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs text-[#9aa3b2] mb-1.5">Vide model</label>
+          <select
+            value={videModel}
+            onChange={e => setVideModel(e.target.value)}
+            className={SELECT_CLASS}
+          >
+            {VIDEO_MODELS.map(opt => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>

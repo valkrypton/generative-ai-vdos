@@ -15,8 +15,8 @@ from .models import Project, Scene, JobLog
 from .serializers import (ProjectSerializer, ProjectCreateSerializer,
                           SceneSerializer, SceneUpdateSerializer, JobLogSerializer)
 from .services import ProjectService, _get_redis, _eager_thread
-from .tasks import run_assemble_stage, run_image_stage, run_refine_stage, run_voice_stage
-from .constants import ImageStatus, Status
+from .tasks import run_assemble_stage, run_image_stage, run_refine_stage, run_video_stage, run_voice_stage
+from .constants import MediaStatus, Status
 from apps.storage import storage_provider
 from apps.projects.models import LLMModel
 from apps.projects.serializers import LLMModelSerializer
@@ -112,7 +112,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
                     "ts": log.created_at.isoformat(),
                     "project_status": project.status,
                     "scene_index": None,
-                    "image_status": None,
+                    "media_status": None,
                 })
                 yield f"data: {payload}\n\n"
 
@@ -176,7 +176,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
             .order_by("index")
         )
         Scene.objects.filter(project=project).update(
-            image_status=ImageStatus.PENDING
+            media_status=MediaStatus.PENDING
         )
         _eager_thread(group(
             run_image_stage.si(str(project.id), idx) for idx in scene_indices
@@ -241,7 +241,8 @@ def _dispatch_generate_stage(project_id: str) -> None:
     if scene_indices:
         tasks = [run_image_stage.s(project_id, scene_indices[0])]
         tasks += [run_image_stage.si(project_id, idx) for idx in scene_indices[1:]]
-        tasks += [run_voice_stage.si(project_id), run_assemble_stage.si(project_id)]
+        tasks += [run_video_stage.si(project_id), run_voice_stage.si(project_id),
+                  run_assemble_stage.si(project_id)]
     else:
         tasks = [run_voice_stage.s(project_id), run_assemble_stage.si(project_id)]
 
@@ -301,13 +302,21 @@ class SceneViewSet(viewsets.GenericViewSet):
             prompt = request.data.get("prompt", "").strip()
             if prompt:
                 scene.media_prompt = prompt
-            scene.image_status = ImageStatus.PENDING
-            update_fields = ["image_status", "updated_at"]
+            scene.media_status = MediaStatus.PENDING
+            update_fields = ["media_status", "updated_at"]
             if prompt:
                 update_fields.append("media_prompt")
             scene.save(update_fields=update_fields)
 
-        _eager_thread(run_image_stage.delay, str(scene.project_id), scene.index)
+        project_id = str(scene.project_id)
+        idx = scene.index
+        if scene.animate:
+            _eager_thread(chain(
+                run_image_stage.si(project_id, idx),
+                run_video_stage.si(project_id, idx),
+            ).delay)
+        else:
+            _eager_thread(run_image_stage.delay, project_id, idx)
         return Response(
             SceneSerializer(scene, context=self.get_serializer_context()).data,
             status=status.HTTP_202_ACCEPTED,
