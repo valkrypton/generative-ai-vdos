@@ -14,7 +14,7 @@ interface Props {
 
 const VOICES = [
   { value: 'en-US-AndrewNeural', label: 'Andrew (US Male)' },
-  { value: 'en-US-RyanNeural', label: 'Ryan (GB Male)' },
+  { value: 'en-US-RyanNeural', label: 'Ryan (US Male)' },
   { value: 'en-US-AvaNeural', label: 'Ava (US Female)' },
 ]
 
@@ -25,6 +25,12 @@ function stableMediaSrc(scene: Scene): string | undefined {
   if (!scene.media_path) return undefined
   if (scene.media_path.includes('?')) return scene.media_path
   return `${scene.media_path}?v=${encodeURIComponent(scene.updated_at ?? '')}`
+}
+
+function stableAudioSrc(scene: Scene): string | undefined {
+  if (!scene.audio_path || scene.voice_status !== 'DONE') return undefined
+  if (scene.audio_path.includes('?')) return scene.audio_path
+  return `${scene.audio_path}?v=${encodeURIComponent(scene.updated_at ?? '')}`
 }
 
 function isVideo(path: string): boolean {
@@ -191,12 +197,16 @@ const DoneSceneCard = memo(function DoneSceneCard({
   const [expanded, setExpanded] = useState(false)
   const [mediaPrompt, setMediaPrompt] = useState(scene.media_prompt)
   const [narration, setNarration] = useState(scene.narration)
-  const [voice, setVoice] = useState(defaultVoice)
+  const [voice, setVoice] = useState(scene.voice || defaultVoice)
   const [isRegenerating, startRegen] = useTransition()
   const [isRevoicing, startRevoice] = useTransition()
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const mediaPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const voicePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
+  useEffect(() => () => {
+    if (mediaPollRef.current) clearInterval(mediaPollRef.current)
+    if (voicePollRef.current) clearInterval(voicePollRef.current)
+  }, [])
 
   const imgColor = IMG_STATUS_COLOR[scene.media_status] ?? '#9aa3b2'
 
@@ -209,16 +219,16 @@ const DoneSceneCard = memo(function DoneSceneCard({
         body: JSON.stringify({ prompt: mediaPrompt }),
       })
       // Poll until the background task finishes so media_path updates without a reload.
-      if (pollRef.current) clearInterval(pollRef.current)
-      pollRef.current = setInterval(async () => {
+      if (mediaPollRef.current) clearInterval(mediaPollRef.current)
+      mediaPollRef.current = setInterval(async () => {
         try {
           const res = await fetch(`/api/projects/${projectId}/scenes/${scene.index}/`)
           if (!res.ok) return
           const updated: Scene = await res.json()
           onStatusChange(scene.index, updated.media_status)
           if (updated.media_status === 'DONE' || updated.media_status === 'FAILED') {
-            clearInterval(pollRef.current!)
-            pollRef.current = null
+            clearInterval(mediaPollRef.current!)
+            mediaPollRef.current = null
             onSceneUpdate(updated)
             if (updated.media_status === 'DONE') onSetStale()
           }
@@ -229,12 +239,34 @@ const DoneSceneCard = memo(function DoneSceneCard({
 
   function handleRevoice() {
     startRevoice(async () => {
-      await fetch(`/api/projects/${projectId}/scenes/${scene.index}/revoice/`, {
+      const res = await fetch(`/api/projects/${projectId}/scenes/${scene.index}/revoice/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ narration, narrator_voice: voice }),
+        body: JSON.stringify({ narration, voice }),
       })
-      onSetStale()
+      if (!res.ok) return
+
+      const queued: Scene = await res.json()
+      onSceneUpdate(queued)
+      if (queued.voice_status === 'DONE' || queued.voice_status === 'FAILED') {
+        if (queued.voice_status === 'DONE') onSetStale()
+        return
+      }
+
+      if (voicePollRef.current) clearInterval(voicePollRef.current)
+      voicePollRef.current = setInterval(async () => {
+        try {
+          const pollRes = await fetch(`/api/projects/${projectId}/scenes/${scene.index}/`)
+          if (!pollRes.ok) return
+          const updated: Scene = await pollRes.json()
+          onSceneUpdate(updated)
+          if (updated.voice_status === 'DONE' || updated.voice_status === 'FAILED') {
+            clearInterval(voicePollRef.current!)
+            voicePollRef.current = null
+            if (updated.voice_status === 'DONE') onSetStale()
+          }
+        } catch { /* keep polling */ }
+      }, 2000)
     })
   }
 
@@ -382,6 +414,16 @@ const DoneSceneCard = memo(function DoneSceneCard({
                   {isRevoicing ? 'Queuing…' : 'Re-voice'}
                 </Button>
               </div>
+              {stableAudioSrc(scene) ? (
+                <audio
+                  controls
+                  preload="none"
+                  src={stableAudioSrc(scene)}
+                  className="w-full h-8"
+                />
+              ) : scene.voice_status === 'RUNNING' ? (
+                <p className="text-xs text-[#f0a35e]">Generating voiceover…</p>
+              ) : null}
             </div>
           </div>
         </div>

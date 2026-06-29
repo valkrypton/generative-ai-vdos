@@ -15,10 +15,11 @@ from apps.core.moderation.drf import blocked_response
 
 from .models import Project, Scene, JobLog
 from .serializers import (ProjectSerializer, ProjectCreateSerializer,
-                          SceneSerializer, SceneUpdateSerializer, JobLogSerializer)
+                          SceneSerializer, SceneUpdateSerializer, JobLogSerializer,
+                          _absolute_media_url)
 from .services import ProjectService, _get_redis, _eager_thread
 from .tasks import run_assemble_stage, run_image_stage, run_refine_stage, run_video_stage, run_voice_stage
-from .constants import MediaStatus, Status
+from .choices import MediaStatus, Status, VoiceStatus
 from apps.storage import storage_provider
 from apps.projects.models import LLMModel
 from apps.projects.serializers import LLMModelSerializer
@@ -52,7 +53,10 @@ class ProjectViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         project = ProjectService.create(owner=request.user, **serializer.validated_data)
-        return Response(ProjectSerializer(project).data, status=status.HTTP_201_CREATED)
+        return Response(
+            ProjectSerializer(project, context=self.get_serializer_context()).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     def _get_locked_project(self):
         return self.get_queryset().select_for_update().get(pk=self.kwargs["pk"])
@@ -77,7 +81,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
                 )
             project.transition_status(Status.GENERATING)
         transaction.on_commit(lambda: _dispatch_generate_stage(str(project.id)))
-        return Response(ProjectSerializer(project).data, status=status.HTTP_202_ACCEPTED)
+        return Response(self.get_serializer(project).data, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=True, methods=["post"])
     def refine(self, request, pk=None):
@@ -99,7 +103,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
             project.transition_status(Status.PLANNING)
         project_id = str(project.id)
         transaction.on_commit(lambda: _dispatch_refine_stage(project_id, instruction))
-        return Response(ProjectSerializer(project).data, status=status.HTTP_202_ACCEPTED)
+        return Response(self.get_serializer(project).data, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=True, methods=["get"], renderer_classes=[SSERenderer])
     def events(self, request, pk=None):
@@ -190,7 +194,12 @@ class ProjectViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="regenerate-voiceovers")
     def regenerate_voiceovers(self, request, pk=None):
         project = self.get_object()
+        voice = request.data.get("narrator_voice") or request.data.get("voice")
+        if isinstance(voice, str) and voice.strip():
+            project.narrator_voice = voice.strip()
+            project.save(update_fields=["narrator_voice", "updated_at"])
 
+        Scene.objects.filter(project=project).update(voice_status=VoiceStatus.PENDING)
         project.stale = True
         project.save(update_fields=["stale", "updated_at"])
         _eager_thread(run_voice_stage.delay, str(project.id))
@@ -208,7 +217,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
             project.status = Status.VIDEO_GENERATING
             project.save(update_fields=["status", "updated_at"])
         _eager_thread(run_assemble_stage.delay, str(project.id))
-        return Response(ProjectSerializer(project).data, status=status.HTTP_202_ACCEPTED)
+        return Response(self.get_serializer(project).data, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=True, methods=["get"])
     def download(self, request, pk=None):
@@ -332,25 +341,48 @@ class SceneViewSet(viewsets.GenericViewSet):
     def revoice(self, request, project_pk=None, index=None):
         scene = self.get_object()
         narration = request.data.get("narration")
+        voice = request.data.get("voice") or request.data.get("narrator_voice")
+        update_fields = ["updated_at"]
+
         if isinstance(narration, str):
             if resp := blocked_response(narration, context="revoice"):
                 return resp
             scene.narration = narration
-            scene.save(update_fields=["narration", "updated_at"])
+            update_fields.append("narration")
+        if isinstance(voice, str) and voice.strip():
+            scene.voice = voice.strip()
+            update_fields.append("voice")
 
-        project = scene.project
-        project.stale = True
-        project.save(update_fields=["stale", "updated_at"])
+        if len(update_fields) > 1:
+            scene.voice_status = VoiceStatus.PENDING
+            update_fields.append("voice_status")
+            scene.save(update_fields=update_fields)
+            project = scene.project
+            project.stale = True
+            project.save(update_fields=["stale", "updated_at"])
+            _eager_thread(run_voice_stage.delay, str(scene.project_id), scene.index)
 
-        _eager_thread(run_voice_stage.delay, str(scene.project_id), scene.index)
         return Response(
             SceneSerializer(scene, context=self.get_serializer_context()).data,
             status=status.HTTP_202_ACCEPTED,
         )
 
+    @action(detail=True, methods=["get"], url_path="audio-urls")
+    def audio_urls(self, request, project_pk=None, index=None):
+        scene = self.get_object()
+        return Response({
+            "audio_url": _absolute_media_url(
+                storage_provider.url(scene.audio_path) or "",
+                request,
+            ),
+        })
+
     @action(detail=True, methods=["get"], url_path="media-urls")
     def media_urls(self, request, project_pk=None, index=None):
         scene = self.get_object()
         return Response({
-            "media_url": storage_provider.url(scene.media_path),
+            "media_url": _absolute_media_url(
+                storage_provider.url(scene.media_path) or "",
+                request,
+            ),
         })

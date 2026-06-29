@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from django.test import TestCase
 
 from apps.core.models import Provider
-from apps.projects.constants import Capability, Status
+from apps.projects.choices import Capability, Status
 from apps.projects.models import LLMModel, Scene
 from apps.projects.tasks import run_plan_stage, run_refine_stage
 from apps.projects.tests.helpers import make_project, make_project_in, make_shot_plan
@@ -32,6 +32,7 @@ def _fake_shot_plan(scene_count=2):
         s.on_screen_text = ""
         s.negative_prompt = ""
         s.animate = False
+        s.voice = None
         scenes.append(s)
     plan.scenes = scenes
     return plan
