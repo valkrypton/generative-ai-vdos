@@ -5,7 +5,12 @@ const nextConfig = {
   async rewrites() {
     return [
       {
-        // auth URLs have no trailing slash in Django urlpatterns
+        // DRF router endpoints under /api/auth/keys/ need trailing slashes
+        source: '/api/auth/keys/:path*',
+        destination: `${djangoOrigin}/api/auth/keys/:path*/`,
+      },
+      {
+        // other auth URLs have no trailing slash (login, callback, logout, me)
         source: '/api/auth/:path*',
         destination: `${djangoOrigin}/api/auth/:path*`,
       },

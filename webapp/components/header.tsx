@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
 interface HeaderProps {
@@ -21,6 +22,12 @@ export function Header({ email, name }: HeaderProps) {
       </span>
 
       <div className="ml-auto flex items-center gap-3">
+        <Link
+          href="/settings"
+          className="text-xs text-[#9aa3b2] hover:text-[#e7e9ee] transition-colors"
+        >
+          Settings
+        </Link>
         <div className="flex items-center gap-2 text-sm text-[#9aa3b2] border border-[#2a2f3a] rounded-full pl-1 pr-3 py-1">
           <span className="w-6 h-6 rounded-full bg-[#6ea8fe] text-[#0a0d14] flex items-center justify-center font-bold text-xs">
             {initials}
