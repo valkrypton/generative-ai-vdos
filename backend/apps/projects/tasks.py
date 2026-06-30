@@ -239,13 +239,19 @@ def run_voice_stage(self, project_id, scene_index=None):
 
     if scene_index is None:
         publish_event(project_id, Stage.VOICE, Level.INFO, "Generating voiceover")
+    else:
+        try:
+            scene = Scene.objects.get(project_id=project_id, index=scene_index)
+        except Scene.DoesNotExist:
+            logger.warning("Scene %s/%s not found, aborting voice stage",
+                           project_id, scene_index)
+            return {"project_id": project_id, "scene_index": scene_index}
 
     try:
         if scene_index is None:
             generate_all_scene_voices(project)
             publish_event(project_id, Stage.VOICE, Level.INFO, "Voiceover done")
         else:
-            scene = Scene.objects.get(project_id=project_id, index=scene_index)
             generate_scene_voice(project, scene, scene.index)
     except (ConnectionError, TimeoutError) as exc:
         handle_transient_error(self, project, project_id, Stage.VOICE, exc)

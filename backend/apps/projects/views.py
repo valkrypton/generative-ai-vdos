@@ -59,7 +59,10 @@ class ProjectViewSet(viewsets.ModelViewSet):
         )
 
     def _get_locked_project(self):
-        return self.get_queryset().select_for_update().get(pk=self.kwargs["pk"])
+        try:
+            return self.get_queryset().select_for_update().get(pk=self.kwargs["pk"])
+        except Project.DoesNotExist:
+            raise Http404
 
     def partial_update(self, request, *args, **kwargs):
         with transaction.atomic():

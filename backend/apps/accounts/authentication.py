@@ -15,9 +15,12 @@ class CognitoSessionAuthentication(BaseAuthentication):
     write protection relies solely on ``SESSION_COOKIE_SAMESITE = "Lax"``,
     which prevents the session cookie from riding along on cross-site
     POST/PATCH/DELETE requests. All first-party mutations originate from the
-    Next.js same-origin rewrite proxy, so they are unaffected. If clients ever
-    send credentials cross-origin (or Bearer tokens directly), add explicit
-    CSRF token enforcement here.
+    Next.js same-origin rewrite proxy, so they are unaffected. If the session
+    cookie is ever sent cross-origin, add explicit CSRF token enforcement here.
+
+    Bearer-token clients are *not* a CSRF case: ``Authorization`` headers are
+    never auto-attached by the browser, so CSRF is moot for them. Secure those
+    flows with CORS, XSS hardening, and safe token storage instead.
     """
 
     def authenticate(self, request):
