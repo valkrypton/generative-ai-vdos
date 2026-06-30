@@ -90,7 +90,7 @@ class RunVideoStageHappyPathTest(TestCase):
         run_video_stage(str(project.id))
 
         mock_submit.assert_called_once()
-        mock_poll.assert_called_with("task_abc123")
+        mock_poll.assert_called_with("task_abc123", None)
         mock_storage.upload.assert_called_once()
 
         animated = Scene.objects.get(project=project, index=0)

@@ -59,8 +59,10 @@ class WanProvider(VideoProvider):
             raise RuntimeError(f"wan submit failed [{rsp.code}]: {rsp.message}")
         return rsp.output.task_id
 
-    def poll(self, task_id: str) -> Optional[str]:
+    def poll(self, task_id: str, api_key=None) -> Optional[str]:
         configure_dashscope_sdk()
+        if api_key:
+            dashscope.api_key = api_key.decrypt()
         rsp = VideoSynthesis.fetch(task_id)
         if rsp.status_code != 200:
             raise RuntimeError(f"wan poll failed [{rsp.code}]: {rsp.message}")
@@ -79,7 +81,7 @@ class WanProvider(VideoProvider):
         deadline = time.time() + 15 * 60
         while time.time() < deadline:
             time.sleep(15)
-            url = self.poll(task_id)
+            url = self.poll(task_id, api_key)
             if url:
                 self.download(url, out_path)
                 return

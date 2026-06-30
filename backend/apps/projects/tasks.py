@@ -192,6 +192,12 @@ def run_video_stage(self, project_id, scene_index=None):
         return {"project_id": str(project_id)}
 
     for scene in animated:
+        if (
+            scene.media_status == MediaStatus.DONE
+            and scene.media_path
+            and scene.media_path.name.lower().endswith(".mp4")
+        ):
+            continue
         try:
             animate_scene(project, scene, scene.index)
         except Exception as exc:

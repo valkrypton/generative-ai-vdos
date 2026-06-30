@@ -4,7 +4,7 @@ from django.core.files.base import ContentFile
 from django.test import TestCase
 
 from apps.accounts.models import UserProfile
-from apps.projects.choices import Status
+from apps.projects.choices import Status, MediaStatus
 from apps.projects.models import Project, Scene
 
 
@@ -49,6 +49,26 @@ class ProjectActionsTest(TestCase):
             data={"shot_plan": {"title": "Ignored"}},
             content_type="application/json",
         )
+        self.assertEqual(resp.status_code, 409)
+
+    @patch("apps.projects.views._eager_thread")
+    def test_retry_from_failed_resumes_pipeline(self, eager_thread):
+        self.project.status = Status.FAILED
+        self.project.error = "boom"
+        self.project.save(update_fields=["status", "error", "updated_at"])
+        self.scene.media_status = MediaStatus.DONE
+        self.scene.save(update_fields=["media_status", "updated_at"])
+
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self.client.post(f"/api/projects/{self.project.id}/retry/")
+        self.assertEqual(resp.status_code, 202)
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.status, Status.GENERATING)
+        self.assertEqual(self.project.error, "")
+        eager_thread.assert_called_once()
+
+    def test_retry_rejected_outside_failed(self):
+        resp = self.client.post(f"/api/projects/{self.project.id}/retry/")
         self.assertEqual(resp.status_code, 409)
 
     @patch("apps.projects.views._eager_thread")

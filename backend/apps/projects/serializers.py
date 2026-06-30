@@ -10,12 +10,18 @@ from apps.projects.models import JobLog, LLMModel, Project, Scene
 def _absolute_media_url(url: str, request) -> str:
     if not url:
         return ""
+    # S3 presigned URLs — return as-is.
     if url.startswith(("http://", "https://")):
+        return url
+    # Local FileSystemStorage paths (/media/…) — keep relative so the browser
+    # resolves them against the public webapp origin. SSR fetches Django via
+    # 127.0.0.1:8000, so request.build_absolute_uri() would embed localhost.
+    if url.startswith("/"):
         return url
     if request is not None:
         return request.build_absolute_uri(url)
-    origin = os.environ.get("DJANGO_ORIGIN", "http://localhost:8000").rstrip("/")
-    return f"{origin}{url}"
+    origin = os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+    return f"{origin}/{url.lstrip('/')}"
 
 
 def _model_slug(capability):
