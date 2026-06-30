@@ -152,10 +152,15 @@ def run_refine_stage(self, project_id, instruction):
 
 @shared_task(**_IMAGE_TASK_OPTS)
 def run_image_stage(self, project_id, scene_index):
-    project = Project.objects.select_related(
-        "image_model", "image_model__provider", "owner",
-    ).get(id=project_id)
-    scene = Scene.objects.get(project_id=project_id, index=scene_index)
+    try:
+        project = Project.objects.select_related(
+            "image_model", "image_model__provider", "owner",
+        ).get(id=project_id)
+        scene = Scene.objects.get(project_id=project_id, index=scene_index)
+    except (Project.DoesNotExist, Scene.DoesNotExist):
+        logger.warning("Project %s / scene %s not found, aborting image stage",
+                       project_id, scene_index)
+        return {"project_id": str(project_id), "scene_index": scene_index}
 
     try:
         generate_scene(project, scene, scene_index)
@@ -174,9 +179,13 @@ def run_image_stage(self, project_id, scene_index):
 
 @shared_task(**_VIDEO_TASK_OPTS)
 def run_video_stage(self, project_id, scene_index=None):
-    project = Project.objects.select_related(
-        "video_model", "video_model__provider", "owner",
-    ).get(id=project_id)
+    try:
+        project = Project.objects.select_related(
+            "video_model", "video_model__provider", "owner",
+        ).get(id=project_id)
+    except Project.DoesNotExist:
+        logger.warning("Project %s not found, aborting video stage", project_id)
+        return {"project_id": str(project_id)}
 
     if not project.video_model:
         fail_project(project, project_id, Stage.VIDEO, RuntimeError("No video model configured"))
@@ -220,7 +229,11 @@ def run_video_stage(self, project_id, scene_index=None):
     time_limit=18 * 60,
 )
 def run_voice_stage(self, project_id, scene_index=None):
-    project = Project.objects.get(id=project_id)
+    try:
+        project = Project.objects.get(id=project_id)
+    except Project.DoesNotExist:
+        logger.warning("Project %s not found, aborting voice stage", project_id)
+        return {"project_id": project_id, "scene_index": scene_index}
     if project.status == Status.FAILED:
         return {"project_id": project_id, "scene_index": scene_index}
 
@@ -262,7 +275,11 @@ def run_voice_stage(self, project_id, scene_index=None):
     time_limit=25 * 60,
 )
 def run_assemble_stage(self, project_id):
-    project = Project.objects.get(id=project_id)
+    try:
+        project = Project.objects.get(id=project_id)
+    except Project.DoesNotExist:
+        logger.warning("Project %s not found, aborting assemble stage", project_id)
+        return {"project_id": project_id}
     if project.status == Status.FAILED:
         return {"project_id": project_id}
     publish_event(project_id, Stage.ASSEMBLE, Level.INFO, "Assembling final video")

@@ -63,6 +63,30 @@ class ProjectActionsTest(TestCase):
         eager_thread.assert_called_once()
 
     @patch("apps.projects.views._eager_thread")
+    def test_regenerate_images_dispatches_uncalled_delay(self, eager_thread):
+        # Regression: the dispatch helper must receive the *uncalled* .delay
+        # (a callable), never the result of group(...).delay(). Passing an
+        # already-evaluated GroupResult makes _eager_thread call a non-callable
+        # and 500s when CELERY_TASK_ALWAYS_EAGER is off (production). Asserting
+        # the arg is callable catches the bug regardless of eager mode, which
+        # would otherwise mask it by running the group synchronously.
+        from apps.projects.choices import MediaStatus
+
+        resp = self.client.post(
+            f"/api/projects/{self.project.id}/regenerate-images/",
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 202)
+        eager_thread.assert_called_once()
+        dispatched = eager_thread.call_args.args[0]
+        self.assertTrue(
+            callable(dispatched),
+            "regenerate-images must pass the uncalled .delay to _eager_thread",
+        )
+        self.scene.refresh_from_db()
+        self.assertEqual(self.scene.media_status, MediaStatus.PENDING)
+
+    @patch("apps.projects.views._eager_thread")
     def test_reassemble_transitions_to_generating_and_dispatches(self, eager_thread):
         self.project.status = Status.DONE
         self.project.save(update_fields=["status", "updated_at"])
