@@ -1,6 +1,7 @@
 import logging
 
 from celery import shared_task
+from django.db import transaction
 
 from apps.storage import storage_provider
 from apps.projects.choices import MediaStatus, Level, Stage, Status, VoiceStatus
@@ -27,6 +28,7 @@ from pipeline.script_agent import generate_shot_plan, revise_shot_plan
 from pipeline.styles import PRESETS
 
 logger = logging.getLogger(__name__)
+
 
 _PLAN_TASK_OPTS = dict(
     bind=True,
@@ -168,11 +170,17 @@ def run_image_stage(self, project_id, scene_index):
         scene.media_status = MediaStatus.FAILED
         scene.save(update_fields=["media_status", "updated_at"])
         is_transient = isinstance(exc, (ConnectionError, TimeoutError))
-        msg = (f"Scene {scene_index} failed (will retry)" if is_transient
-               else f"Scene {scene_index} failed: {exc}")
-        publish_event(project_id, Stage.IMAGES, Level.ERROR, msg,
+        if is_transient:
+            publish_event(project_id, Stage.IMAGES, Level.ERROR,
+                          f"Scene {scene_index} failed (will retry)",
+                          scene_index=scene_index)
+            raise  # let Celery autoretry
+        # Non-transient: log and return so the Celery chain continues to
+        # transition_to_image_review, letting the user regenerate this scene.
+        publish_event(project_id, Stage.IMAGES, Level.ERROR,
+                      f"Scene {scene_index} failed: {exc}",
                       scene_index=scene_index)
-        raise
+        return {"project_id": str(project_id), "scene_index": scene_index, "failed": True}
 
     return {"project_id": str(project_id), "scene_index": scene_index}
 
@@ -201,6 +209,13 @@ def run_video_stage(self, project_id, scene_index=None):
         return {"project_id": str(project_id)}
 
     for scene in animated:
+        if (
+            scene.media_status == MediaStatus.DONE
+            and scene.media_path
+            and scene.media_path.name.lower().endswith(".mp4")
+        ):
+            logger.debug("Skipping completed video for scene %s", scene.index)
+            continue
         try:
             animate_scene(project, scene, scene.index)
         except Exception as exc:
@@ -233,9 +248,9 @@ def run_voice_stage(self, project_id, scene_index=None):
         project = Project.objects.get(id=project_id)
     except Project.DoesNotExist:
         logger.warning("Project %s not found, aborting voice stage", project_id)
-        return {"project_id": project_id, "scene_index": scene_index}
+        return {"project_id": str(project_id), "scene_index": scene_index}
     if project.status == Status.FAILED:
-        return {"project_id": project_id, "scene_index": scene_index}
+        return {"project_id": str(project_id), "scene_index": scene_index}
 
     if scene_index is None:
         publish_event(project_id, Stage.VOICE, Level.INFO, "Generating voiceover")
@@ -245,7 +260,7 @@ def run_voice_stage(self, project_id, scene_index=None):
         except Scene.DoesNotExist:
             logger.warning("Scene %s/%s not found, aborting voice stage",
                            project_id, scene_index)
-            return {"project_id": project_id, "scene_index": scene_index}
+            return {"project_id": str(project_id), "scene_index": scene_index}
 
     try:
         if scene_index is None:
@@ -285,9 +300,9 @@ def run_assemble_stage(self, project_id):
         project = Project.objects.get(id=project_id)
     except Project.DoesNotExist:
         logger.warning("Project %s not found, aborting assemble stage", project_id)
-        return {"project_id": project_id}
+        return {"project_id": str(project_id)}
     if project.status == Status.FAILED:
-        return {"project_id": project_id}
+        return {"project_id": str(project_id)}
     publish_event(project_id, Stage.ASSEMBLE, Level.INFO, "Assembling final video")
 
     try:
@@ -308,6 +323,31 @@ def run_assemble_stage(self, project_id):
         fail_project(project, project_id, Stage.ASSEMBLE, exc)
         raise
 
+    return {"project_id": project_id}
+
+
+@shared_task
+def transition_to_image_review(project_id):
+    with transaction.atomic():
+        project = Project.objects.select_for_update().get(id=project_id)
+        if project.status != Status.GENERATING:
+            publish_event(project_id, Stage.IMAGES, Level.WARN,
+                          f"transition_to_image_review skipped: project is {project.status}")
+            return {"project_id": project_id}
+        # Lock scene rows so a concurrent regenerate cannot change media_status
+        # between the terminal check and the status transition.
+        non_terminal = project.scenes.select_for_update().exclude(
+            media_status__in=[MediaStatus.DONE, MediaStatus.FAILED]
+        )
+        if non_terminal.exists():
+            publish_event(project_id, Stage.IMAGES, Level.WARN,
+                          "transition_to_image_review: some scenes still running — skipping")
+            return {"project_id": project_id}
+        project.transition_status(Status.IMAGE_REVIEW)
+    publish_event(
+        project_id, Stage.IMAGES, Level.INFO,
+        "Images are ready for review. Approve them to continue generating the video.",
+    )
     return {"project_id": project_id}
 
 

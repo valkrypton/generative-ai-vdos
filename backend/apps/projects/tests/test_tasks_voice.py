@@ -111,7 +111,7 @@ class RunAssembleStageTest(TestCase):
         self.project = Project.objects.create(
             owner=self.owner,
             prompt="berries",
-            status=Status.GENERATING,
+            status=Status.VIDEO_GENERATING,
             shot_plan={
                 "title": "Berries",
                 "description": "A story",

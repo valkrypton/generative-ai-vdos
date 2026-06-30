@@ -1,6 +1,6 @@
 import os
 from .base import *  # noqa: F401, F403
-from .base import env_csv, require_cognito
+from .base import env_bool, env_csv, require_cognito
 
 DEBUG = False
 SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
@@ -8,7 +8,7 @@ ALLOWED_HOSTS = env_csv("DJANGO_ALLOWED_HOSTS")
 
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
-SECURE_SSL_REDIRECT = True
+SECURE_SSL_REDIRECT = not env_bool("DISABLE_SSL_REDIRECT", default=False)
 # TLS terminates at the load balancer / CDN and forwards plain HTTP, so trust the
 # X-Forwarded-Proto header to know the original request was HTTPS. Without this,
 # SECURE_SSL_REDIRECT would 301-loop forever and secure cookies/HSTS never apply.
@@ -59,6 +59,6 @@ LOGGING = {
     },
     "root": {
         "handlers": ["console"],
-        "level": "WARNING",
+        "level": "INFO",
     },
 }

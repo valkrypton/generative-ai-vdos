@@ -1,7 +1,11 @@
 from unittest.mock import MagicMock, patch
 
+import os
+
+from django.conf import settings
 from django.test import TestCase
 
+from apps.accounts.models import UserAPIKey
 from apps.core.models import Provider
 from apps.projects.choices import Capability, MediaStatus, Status
 from apps.projects.models import LLMModel, Project, Scene
@@ -90,7 +94,7 @@ class RunVideoStageHappyPathTest(TestCase):
         run_video_stage(str(project.id))
 
         mock_submit.assert_called_once()
-        mock_poll.assert_called_with("task_abc123")
+        mock_poll.assert_called_with("task_abc123", None)
         mock_storage.upload.assert_called_once()
 
         animated = Scene.objects.get(project=project, index=0)
@@ -99,6 +103,38 @@ class RunVideoStageHappyPathTest(TestCase):
 
         still = Scene.objects.get(project=project, index=1)
         self.assertEqual(still.media_status, MediaStatus.PENDING)
+
+    @patch("apps.projects.utils._motion_prompt", return_value="gentle cinematic motion")
+    @patch("pipeline.video.wan.WanProvider.download")
+    @patch("pipeline.video.wan.WanProvider.poll", return_value="https://cdn.example.com/clip.mp4")
+    @patch("pipeline.video.wan.WanProvider.submit", return_value="task_sec123")
+    @patch("apps.projects.utils.storage_provider")
+    @patch("apps.projects.utils.time")
+    def test_animates_scene_with_user_api_key(
+        self, mock_time, mock_storage, mock_submit, mock_poll, mock_download, mock_motion,
+    ):
+        os.environ["FIELD_ENCRYPTION_KEY"] = settings.FIELD_ENCRYPTION_KEY
+        mock_time.time.return_value = 0
+        mock_time.sleep = MagicMock()
+        mock_file = MagicMock()
+        mock_file.__enter__ = MagicMock(return_value=mock_file)
+        mock_file.__exit__ = MagicMock(return_value=False)
+        mock_file.read.return_value = b"\x89PNG\r\n\x1a\n"
+        mock_storage.storage.open.return_value = mock_file
+        mock_download.side_effect = lambda url, path: path.write_bytes(FAKE_MP4)
+
+        vm = _make_video_model()
+        project = _make_animated_project(video_model=vm)
+        api_key = UserAPIKey(owner=project.owner, provider=vm.provider)
+        api_key.set_api_key("sk-test-dashscope-key12")
+        api_key.save()
+        secure_key = api_key.get_secure_key()
+
+        run_video_stage(str(project.id))
+
+        mock_submit.assert_called_once()
+        self.assertEqual(mock_submit.call_args[0][2].decrypt(), secure_key.decrypt())
+        mock_poll.assert_called_with("task_sec123", secure_key)
 
 
 class RunVideoStageFailureTest(TestCase):

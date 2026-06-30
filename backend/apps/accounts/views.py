@@ -15,6 +15,14 @@ from .serializers import UserAPIKeySerializer, UserProfileSerializer
 from .services import CognitoService
 
 
+def _public_origin(request) -> str:
+    """Public origin for post-auth redirects (uses Django's validated host/scheme)."""
+    configured = (getattr(settings, "FRONTEND_URL", "") or "").rstrip("/")
+    if configured:
+        return configured
+    return f"{request.scheme}://{request.get_host()}"
+
+
 @api_view(["GET"])
 def login(request):
     state = secrets.token_urlsafe(32)
@@ -64,7 +72,7 @@ def callback(request):
     request.session["refresh_token"] = tokens.get("refresh_token", "")
     request.session["cognito_sub"] = sub
 
-    return redirect(f"{settings.FRONTEND_URL}/home")
+    return redirect(f"{_public_origin(request)}/home")
 
 
 @api_view(["GET", "POST"])

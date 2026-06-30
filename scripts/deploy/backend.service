@@ -1,0 +1,17 @@
+[Unit]
+Description=Generative AI Vdos Django backend
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/generative-ai-vdos
+EnvironmentFile=/home/ubuntu/generative-ai-vdos/.env
+Environment=DJANGO_SETTINGS_MODULE=config.settings.deployment
+ExecStart=/home/ubuntu/generative-ai-vdos/scripts/deploy/start-backend.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

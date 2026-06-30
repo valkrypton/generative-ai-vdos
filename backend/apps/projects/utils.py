@@ -26,7 +26,10 @@ logger = logging.getLogger(__name__)
 
 
 def get_work_dir(project):
-    return Path(settings.MEDIA_ROOT) / str(project.owner_id) / str(project.id)
+    # Must be outside MEDIA_ROOT so _download_field never copies a file onto
+    # its own storage path (open-for-write truncates before open-for-read).
+    base = Path(settings.BASE_DIR).parent / "workdirs"
+    return base / str(project.owner_id) / str(project.id)
 
 
 def build_shot_plan(project) -> ShotPlan:
@@ -150,12 +153,26 @@ def generate_scene(project, scene, scene_index):
         media_status=MediaStatus.RUNNING,
     )
 
+    def _on_preview(url: str) -> None:
+        scene.preview_url = url
+        scene.save(update_fields=["preview_url", "updated_at"])
+        publish_event(
+            project_id, Stage.IMAGES, Level.INFO,
+            f"Scene {scene_index} preview ready",
+            scene_index=scene_index,
+            preview_url=url,
+            media_status=MediaStatus.RUNNING,
+        )
+
     data, used = generate_scene_image(
         plan, scene_index, provider,
         fallback=False,
         api_key=secure_key,
         model=llm.model_id,
+        on_preview_url=_on_preview,
     )
+    if not data:
+        raise RuntimeError(f"image provider {used.name} returned empty bytes for scene {scene_index}")
 
     if scene.media_path:
         scene.media_path.delete(save=False)
@@ -168,8 +185,9 @@ def generate_scene(project, scene, scene_index):
             storage_provider.upload(scene.media_path, tmp_path, save=False)
     except Exception as e:
         logger.error("Failed to upload image to storage: %s", e)
+        scene.preview_url = ""
         scene.media_status = MediaStatus.FAILED
-        scene.save(update_fields=["media_status", "updated_at"])
+        scene.save(update_fields=["preview_url", "media_status", "updated_at"])
         publish_event(
             project_id, Stage.IMAGES, Level.ERROR,
             f"Failed to upload image for scene {scene_index}: {e}",
@@ -178,9 +196,12 @@ def generate_scene(project, scene, scene_index):
         )
         raise
 
+    scene.preview_url = ""
     scene.media_status = MediaStatus.DONE
     scene.media_provider = used.name
-    scene.save(update_fields=["media_path", "media_status", "media_provider", "updated_at"])
+    scene.save(update_fields=[
+        "preview_url", "media_path", "media_status", "media_provider", "updated_at"
+    ])
     publish_event(
         project_id, Stage.IMAGES, Level.INFO,
         f"Scene {scene_index} image done via {used.name}",
@@ -228,7 +249,7 @@ def animate_scene(project, scene, scene_index):
     deadline = time.time() + _VIDEO_POLL_TIMEOUT
     while time.time() < deadline:
         time.sleep(_VIDEO_POLL_INTERVAL)
-        url = provider.poll(task_id)
+        url = provider.poll(task_id, secure_key)
         if url:
             filename = f"scene_{scene_index:02d}.mp4"
             with tempfile.TemporaryDirectory() as tmpdir:

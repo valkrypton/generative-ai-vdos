@@ -4,7 +4,7 @@ from unittest.mock import patch
 from django.test import TestCase
 
 from apps.projects.choices import MediaStatus, Status
-from apps.projects.models import Scene
+from apps.projects.models import Project, Scene
 from apps.projects.orchestration import run_assembly, run_images, run_voice
 from apps.projects.tests.helpers import make_generating_project
 
@@ -29,13 +29,18 @@ class RunImagesTest(TestCase):
             self.assertEqual(scene.media_status, MediaStatus.DONE)
 
     @patch("apps.projects.tasks.generate_scene", side_effect=RuntimeError("boom"))
-    def test_images_failure_marks_project_failed(self, mock_gen):
+    def test_images_failure_marks_scene_failed_project_stays_generating(self, mock_gen):
+        # Non-transient scene failures no longer abort the chain — the task returns
+        # instead of raising so transition_to_image_review still fires, giving the
+        # user a chance to regenerate the failed scene.
         project = make_generating_project(scene_count=1)
 
         run_images(project.id, 1)
 
+        scene = Scene.objects.get(project=project)
+        self.assertEqual(scene.media_status, MediaStatus.FAILED)
         project.refresh_from_db()
-        self.assertEqual(project.status, Status.FAILED)
+        self.assertEqual(project.status, Status.GENERATING)
 
     @patch("apps.projects.tasks.generate_scene", side_effect=_mock_generate_scene)
     def test_images_does_not_trigger_voice(self, mock_gen):
@@ -90,6 +95,8 @@ class RunAssemblyTest(TestCase):
         mock_materialize.return_value = (work_dir, plan)
         mock_assemble.return_value = final
         project = make_generating_project()
+        Project.objects.filter(pk=project.pk).update(status=Status.VIDEO_GENERATING)
+        project.refresh_from_db()
 
         run_assembly(project.id)
 
@@ -99,6 +106,8 @@ class RunAssemblyTest(TestCase):
     @patch("apps.projects.tasks.materialize_work_dir", side_effect=RuntimeError("boom"))
     def test_assembly_failure_marks_project_failed(self, mock_materialize):
         project = make_generating_project()
+        Project.objects.filter(pk=project.pk).update(status=Status.VIDEO_GENERATING)
+        project.refresh_from_db()
 
         run_assembly(project.id)
 

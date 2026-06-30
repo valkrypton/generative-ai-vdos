@@ -1,6 +1,6 @@
 import json
 
-from celery import chain, group
+from celery import chain, chord, group
 from django.db import transaction
 from django.http import Http404
 from django.http import StreamingHttpResponse
@@ -18,11 +18,40 @@ from .serializers import (ProjectSerializer, ProjectCreateSerializer,
                           SceneSerializer, SceneUpdateSerializer, JobLogSerializer,
                           _absolute_media_url)
 from .services import ProjectService, _get_redis, _eager_thread
-from .tasks import run_assemble_stage, run_image_stage, run_refine_stage, run_video_stage, run_voice_stage
+from .tasks import (
+    mark_pipeline_failed,
+    run_assemble_stage,
+    run_image_stage,
+    run_refine_stage,
+    run_video_stage,
+    run_voice_stage,
+    transition_to_image_review,
+)
 from .choices import MediaStatus, Status, VoiceStatus
 from apps.storage import storage_provider
 from apps.projects.models import LLMModel
 from apps.projects.serializers import LLMModelSerializer
+
+
+def _reset_failed_animated_scenes_with_stills(project):
+    """Video-stage failures still have the PNG in storage — mark DONE to retry animation."""
+    Scene.objects.filter(
+        project=project,
+        animate=True,
+        media_status=MediaStatus.FAILED,
+    ).exclude(
+        media_path="",
+    ).exclude(
+        media_path__iendswith=".mp4",
+    ).update(media_status=MediaStatus.DONE)
+
+
+def _resume_failed_project(project) -> str:
+    project.error = ""
+    project.transition_status(Status.GENERATING)
+    project.save(update_fields=["error", "updated_at"])
+    _reset_failed_animated_scenes_with_stills(project)
+    return str(project.id)
 
 
 class SSERenderer(BaseRenderer):
@@ -62,7 +91,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
         try:
             return self.get_queryset().select_for_update().get(pk=self.kwargs["pk"])
         except Project.DoesNotExist:
-            raise Http404
+            raise Http404 from None
 
     def partial_update(self, request, *args, **kwargs):
         with transaction.atomic():
@@ -74,13 +103,20 @@ class ProjectViewSet(viewsets.ModelViewSet):
                 )
             serializer = self.get_serializer(project, data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)
-            serializer.save()
+            self.perform_update(serializer)
         return Response(serializer.data)
 
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
         with transaction.atomic():
             project = self._get_locked_project()
+            if project.status == Status.FAILED:
+                project_id = _resume_failed_project(project)
+                transaction.on_commit(lambda: _dispatch_retry_stage(project_id))
+                return Response(
+                    self.get_serializer(project).data,
+                    status=status.HTTP_202_ACCEPTED,
+                )
             if project.status != Status.REVIEW:
                 return Response(
                     {"detail": f"Cannot approve from {project.status} state."},
@@ -88,6 +124,19 @@ class ProjectViewSet(viewsets.ModelViewSet):
                 )
             project.transition_status(Status.GENERATING)
         transaction.on_commit(lambda: _dispatch_generate_stage(str(project.id)))
+        return Response(self.get_serializer(project).data, status=status.HTTP_202_ACCEPTED)
+
+    @action(detail=True, methods=["post"])
+    def retry(self, request, pk=None):
+        with transaction.atomic():
+            project = self._get_locked_project()
+            if project.status != Status.FAILED:
+                return Response(
+                    {"detail": f"Cannot retry from {project.status} state."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            project_id = _resume_failed_project(project)
+        transaction.on_commit(lambda: _dispatch_retry_stage(project_id))
         return Response(self.get_serializer(project).data, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=True, methods=["post"])
@@ -184,7 +233,12 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="regenerate-images")
     def regenerate_images(self, request, pk=None):
-        project = self.get_object()
+        project = self._get_locked_project()
+        if project.status == Status.IMAGE_REVIEW:
+            return Response(
+                {"detail": "Cannot bulk-regenerate images during review; regenerate scenes individually."},
+                status=status.HTTP_409_CONFLICT,
+            )
         scene_indices = list(
             Scene.objects.filter(project=project)
             .values_list("index", flat=True)
@@ -200,7 +254,12 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="regenerate-voiceovers")
     def regenerate_voiceovers(self, request, pk=None):
-        project = self.get_object()
+        project = self._get_locked_project()
+        if project.status == Status.IMAGE_REVIEW:
+            return Response(
+                {"detail": "Cannot regenerate voiceovers during image review."},
+                status=status.HTTP_409_CONFLICT,
+            )
         voice = request.data.get("narrator_voice") or request.data.get("voice")
         if isinstance(voice, str) and voice.strip():
             project.narrator_voice = voice.strip()
@@ -211,6 +270,26 @@ class ProjectViewSet(viewsets.ModelViewSet):
         project.save(update_fields=["stale", "updated_at"])
         _eager_thread(run_voice_stage.delay, str(project.id))
         return Response({"queued": 1}, status=status.HTTP_202_ACCEPTED)
+
+    @action(detail=True, methods=["post"], url_path="approve-images")
+    def approve_images(self, request, pk=None):
+        with transaction.atomic():
+            project = self._get_locked_project()
+            if project.status != Status.IMAGE_REVIEW:
+                return Response(
+                    {"detail": f"Cannot approve images from {project.status} state."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            not_done = project.scenes.select_for_update().exclude(media_status=MediaStatus.DONE)
+            if not_done.exists():
+                return Response(
+                    {"detail": "All scenes must be DONE before approving."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            project.transition_status(Status.VIDEO_GENERATING)
+        project_id = str(project.id)
+        transaction.on_commit(lambda: _dispatch_voice_assembly(project_id))
+        return Response(self.get_serializer(project).data, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=True, methods=["post"])
     def reassemble(self, request, pk=None):
@@ -258,13 +337,57 @@ def _dispatch_generate_stage(project_id: str) -> None:
         .values_list("index", flat=True)
     )
 
+    rest = chain(
+        run_video_stage.si(project_id),
+        run_voice_stage.si(project_id),
+        run_assemble_stage.si(project_id),
+    )
+
     if scene_indices:
-        tasks = [run_image_stage.s(project_id, scene_indices[0])]
-        tasks += [run_image_stage.si(project_id, idx) for idx in scene_indices[1:]]
-        tasks += [run_video_stage.si(project_id), run_voice_stage.si(project_id),
-                  run_assemble_stage.si(project_id)]
+        canvas = chord(
+            group(run_image_stage.si(project_id, idx) for idx in scene_indices),
+            chain(transition_to_image_review.si(project_id), rest),
+        )
     else:
-        tasks = [run_voice_stage.s(project_id), run_assemble_stage.si(project_id)]
+        canvas = rest
+
+    _eager_thread(
+        lambda: canvas.apply_async(
+            link_error=mark_pipeline_failed.s(project_id=str(project_id)),
+        )
+    )
+
+def _dispatch_voice_assembly(project_id: str) -> None:
+    _eager_thread(chain(
+        run_video_stage.s(project_id),
+        run_voice_stage.si(project_id),
+        run_assemble_stage.si(project_id),
+    ).delay)
+
+
+def _dispatch_retry_stage(project_id: str) -> None:
+    """Resume a FAILED project from the first incomplete stage."""
+    pending_images = list(
+        Scene.objects.filter(
+            project_id=project_id,
+            media_status__in=[MediaStatus.PENDING, MediaStatus.FAILED],
+        )
+        .order_by("index")
+        .values_list("index", flat=True)
+    )
+
+    needs_video = Scene.objects.filter(
+        project_id=project_id,
+        animate=True,
+    ).exclude(media_path__iendswith=".mp4").exists()
+
+    tasks = []
+    if pending_images:
+        tasks.append(run_image_stage.s(project_id, pending_images[0]))
+        tasks += [run_image_stage.si(project_id, idx) for idx in pending_images[1:]]
+    if needs_video:
+        tasks.append(run_video_stage.si(project_id))
+    tasks += [run_voice_stage.si(project_id), run_assemble_stage.si(project_id)]
 
     _eager_thread(chain(*tasks).delay)
 

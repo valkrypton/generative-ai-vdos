@@ -53,3 +53,11 @@ class MaterializeWorkDirTest(TestCase):
 
         with self.assertRaises(FileNotFoundError):
             materialize_work_dir(self.project)
+
+    def test_materialize_does_not_truncate_storage_files(self):
+        scene = self._scene_with_assets()
+        scene.refresh_from_db()
+        orig_size = scene.media_path.size
+        materialize_work_dir(self.project)
+        scene.refresh_from_db()
+        self.assertEqual(scene.media_path.size, orig_size)

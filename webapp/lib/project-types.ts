@@ -2,6 +2,7 @@ export type ProjectStatus =
   | 'DRAFT'
   | 'PLANNING'
   | 'REVIEW'
+  | 'IMAGE_REVIEW'
   | 'GENERATING'
   | 'VIDEO_GENERATING'
   | 'DONE'
@@ -36,6 +37,7 @@ export interface Scene {
   voice: string
   on_screen_text: string
   negative_prompt: string
+  preview_url: string
   media_path: string
   media_status: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED'
   media_provider: string
