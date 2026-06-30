@@ -1,6 +1,5 @@
 from django.core.files.base import ContentFile
 from django.test import TestCase
-from pathlib import Path
 
 from apps.accounts.models import UserProfile
 from apps.projects.models import Project, Scene

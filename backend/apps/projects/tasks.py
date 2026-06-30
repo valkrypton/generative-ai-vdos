@@ -197,6 +197,7 @@ def run_video_stage(self, project_id, scene_index=None):
             and scene.media_path
             and scene.media_path.name.lower().endswith(".mp4")
         ):
+            logger.debug("Skipping completed video for scene %s", scene.index)
             continue
         try:
             animate_scene(project, scene, scene.index)

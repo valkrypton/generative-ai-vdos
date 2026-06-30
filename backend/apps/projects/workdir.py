@@ -10,13 +10,20 @@ from apps.projects.utils import build_shot_plan, get_work_dir
 from pipeline.schema import ShotPlan
 
 
+def _local_source_path(field_file) -> Path | None:
+    try:
+        return Path(field_file.path).resolve()
+    except (NotImplementedError, ValueError, AttributeError):
+        return None
+
+
 def _download_field(field_file, dest: Path) -> None:
     if not field_file:
         raise FileNotFoundError("missing storage file")
     dest.parent.mkdir(parents=True, exist_ok=True)
-    src_path = Path(field_file.path).resolve()
+    src_path = _local_source_path(field_file)
     dest = dest.resolve()
-    if src_path == dest:
+    if src_path is not None and src_path == dest:
         if not src_path.is_file() or src_path.stat().st_size == 0:
             raise FileNotFoundError(f"empty or missing file: {dest}")
         return

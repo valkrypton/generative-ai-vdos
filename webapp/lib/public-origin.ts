@@ -7,9 +7,10 @@ function originFromHeaders(
   get: (name: string) => string | null,
 ): string | null {
   const host = get('x-forwarded-host') ?? get('host')
-  // Reverse proxies may send comma-separated lists; first value is client-facing.
-  const proto = (get('x-forwarded-proto') ?? 'http').split(',')[0].trim()
   if (!host) return null
+  const rawProto = get('x-forwarded-proto')
+  if (!rawProto) return null
+  const proto = rawProto.split(',')[0].trim()
   return `${proto}://${host.split(',')[0].trim()}`
 }
 

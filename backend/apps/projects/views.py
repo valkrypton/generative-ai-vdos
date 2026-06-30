@@ -25,6 +25,27 @@ from apps.projects.models import LLMModel
 from apps.projects.serializers import LLMModelSerializer
 
 
+def _reset_failed_animated_scenes_with_stills(project):
+    """Video-stage failures still have the PNG in storage — mark DONE to retry animation."""
+    Scene.objects.filter(
+        project=project,
+        animate=True,
+        media_status=MediaStatus.FAILED,
+    ).exclude(
+        media_path="",
+    ).exclude(
+        media_path__iendswith=".mp4",
+    ).update(media_status=MediaStatus.DONE)
+
+
+def _resume_failed_project(project) -> str:
+    project.error = ""
+    project.transition_status(Status.GENERATING)
+    project.save(update_fields=["error", "updated_at"])
+    _reset_failed_animated_scenes_with_stills(project)
+    return str(project.id)
+
+
 class SSERenderer(BaseRenderer):
     media_type = 'text/event-stream'
     format = 'txt'
@@ -75,15 +96,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             project = self._get_locked_project()
             if project.status == Status.FAILED:
-                project.error = ""
-                project.transition_status(Status.GENERATING)
-                project.save(update_fields=["error", "updated_at"])
-                Scene.objects.filter(
-                    project=project,
-                    animate=True,
-                    media_status=MediaStatus.FAILED,
-                ).update(media_status=MediaStatus.DONE)
-                project_id = str(project.id)
+                project_id = _resume_failed_project(project)
                 transaction.on_commit(lambda: _dispatch_retry_stage(project_id))
                 return Response(
                     self.get_serializer(project).data,
@@ -107,16 +120,8 @@ class ProjectViewSet(viewsets.ModelViewSet):
                     {"detail": f"Cannot retry from {project.status} state."},
                     status=status.HTTP_409_CONFLICT,
                 )
-            project.error = ""
-            project.transition_status(Status.GENERATING)
-            project.save(update_fields=["error", "updated_at"])
-            # Animation can fail after images succeed — PNG is still in storage.
-            Scene.objects.filter(
-                project=project,
-                animate=True,
-                media_status=MediaStatus.FAILED,
-            ).update(media_status=MediaStatus.DONE)
-        transaction.on_commit(lambda: _dispatch_retry_stage(str(project.id)))
+            project_id = _resume_failed_project(project)
+        transaction.on_commit(lambda: _dispatch_retry_stage(project_id))
         return Response(self.get_serializer(project).data, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=True, methods=["post"])

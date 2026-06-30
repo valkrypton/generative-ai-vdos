@@ -19,7 +19,7 @@ def _absolute_media_url(url: str, request) -> str:
     if url.startswith("/"):
         return url
     if request is not None:
-        return request.build_absolute_uri(url)
+        return request.build_absolute_uri(f"/{url.lstrip('/')}")
     origin = os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
     return f"{origin}/{url.lstrip('/')}"
 

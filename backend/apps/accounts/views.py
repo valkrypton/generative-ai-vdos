@@ -16,13 +16,7 @@ from .services import CognitoService
 
 
 def _public_origin(request) -> str:
-    """Proxy-aware public origin for post-auth redirects."""
-    forwarded_host = request.META.get("HTTP_X_FORWARDED_HOST")
-    if forwarded_host:
-        # Reverse proxies may send comma-separated lists; first value is the client-facing one.
-        host = forwarded_host.split(",")[0].strip()
-        proto = (request.META.get("HTTP_X_FORWARDED_PROTO") or "https").split(",")[0].strip()
-        return f"{proto}://{host}"
+    """Public origin for post-auth redirects (uses Django's validated host/scheme)."""
     configured = (getattr(settings, "FRONTEND_URL", "") or "").rstrip("/")
     if configured:
         return configured
