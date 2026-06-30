@@ -48,9 +48,16 @@ return n
 @contextmanager
 def _concurrency_slot():
     import redis as redis_lib
-    r = redis_lib.from_url(os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0"))
-    acquire = r.register_script(_acquire_lua)
-    release = r.register_script(_release_lua)
+    broker_url = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
+    try:
+        r = redis_lib.from_url(broker_url)
+        acquire = r.register_script(_acquire_lua)
+        release = r.register_script(_release_lua)
+    except Exception as exc:
+        raise RuntimeError(
+            "Failed to initialize DashScope concurrency slot redis client "
+            f"(CELERY_BROKER_URL={broker_url!r})"
+        ) from exc
     deadline = time.monotonic() + _SEM_WAIT
     acquired = False
     while time.monotonic() < deadline:
@@ -59,7 +66,10 @@ def _concurrency_slot():
             break
         time.sleep(0.5)
     else:
-        raise TimeoutError("Timed out waiting for DashScope concurrency slot")
+        raise TimeoutError(
+            f"Timed out after {_SEM_WAIT}s waiting for DashScope concurrency slot "
+            f"(limit: {_CONCURRENT_LIMIT} concurrent requests)"
+        )
     try:
         yield
     finally:
