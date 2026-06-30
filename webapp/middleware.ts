@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { publicUrl } from '@/lib/public-origin'
 
 const DJANGO_SESSION_COOKIE = 'sessionid'
 const PUBLIC_PATHS = ['/api/', '/login']
@@ -8,9 +9,8 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const hasSession = request.cookies.has(DJANGO_SESSION_COOKIE)
 
-  // Authenticated users visiting /login → send home
   if (pathname === '/login' && hasSession) {
-    return NextResponse.redirect(new URL('/home', request.url))
+    return NextResponse.redirect(publicUrl(request, '/home'))
   }
 
   // Public paths pass through
@@ -20,7 +20,7 @@ export function middleware(request: NextRequest) {
 
   // No cookie → bounce to login before the server even renders
   if (!hasSession) {
-    return NextResponse.redirect(new URL('/login', request.url))
+    return NextResponse.redirect(publicUrl(request, '/login'))
   }
 
   return NextResponse.next()

@@ -15,6 +15,20 @@ from .serializers import UserAPIKeySerializer, UserProfileSerializer
 from .services import CognitoService
 
 
+def _public_origin(request) -> str:
+    """Proxy-aware public origin for post-auth redirects."""
+    forwarded_host = request.META.get("HTTP_X_FORWARDED_HOST")
+    if forwarded_host:
+        # Reverse proxies may send comma-separated lists; first value is the client-facing one.
+        host = forwarded_host.split(",")[0].strip()
+        proto = (request.META.get("HTTP_X_FORWARDED_PROTO") or "https").split(",")[0].strip()
+        return f"{proto}://{host}"
+    configured = (getattr(settings, "FRONTEND_URL", "") or "").rstrip("/")
+    if configured:
+        return configured
+    return f"{request.scheme}://{request.get_host()}"
+
+
 @api_view(["GET"])
 def login(request):
     state = secrets.token_urlsafe(32)
@@ -64,7 +78,7 @@ def callback(request):
     request.session["refresh_token"] = tokens.get("refresh_token", "")
     request.session["cognito_sub"] = sub
 
-    return redirect(f"{settings.FRONTEND_URL}/home")
+    return redirect(f"{_public_origin(request)}/home")
 
 
 @api_view(["GET", "POST"])
