@@ -20,7 +20,7 @@ class PexelsProvider(ImageProvider):
 
     def generate(self, prompt: str, query: str | None = None,
                  negative: str | None = None, api_key=None,
-                 model: str | None = None) -> bytes:
+                 model: str | None = None, on_preview_url=None) -> bytes:
         key = api_key.decrypt() if api_key else os.environ["PEXELS_API_KEY"]
         q = query or prompt
         url = "https://api.pexels.com/v1/search?" + urllib.parse.urlencode(

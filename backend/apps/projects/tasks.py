@@ -29,6 +29,7 @@ from pipeline.styles import PRESETS
 
 logger = logging.getLogger(__name__)
 
+
 _PLAN_TASK_OPTS = dict(
     bind=True,
     max_retries=2,

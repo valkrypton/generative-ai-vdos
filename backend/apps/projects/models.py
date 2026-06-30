@@ -147,6 +147,7 @@ class Scene(TimestampMixin):
         max_length=20, choices=VoiceStatus.choices, default=VoiceStatus.PENDING
     )
     media_provider = models.CharField(max_length=50, blank=True, default="")
+    preview_url    = models.CharField(max_length=2048, blank=True, default="")
 
     class Meta:
         constraints = [

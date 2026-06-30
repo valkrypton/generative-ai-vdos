@@ -1,6 +1,6 @@
 import os
 from .base import *  # noqa: F401, F403
-from .base import env_csv, require_cognito
+from .base import env_bool, env_csv, require_cognito
 
 DEBUG = False
 SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
@@ -8,7 +8,7 @@ ALLOWED_HOSTS = env_csv("DJANGO_ALLOWED_HOSTS")
 
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
-SECURE_SSL_REDIRECT = True
+SECURE_SSL_REDIRECT = not env_bool("DISABLE_SSL_REDIRECT", default=False)
 SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
@@ -53,6 +53,6 @@ LOGGING = {
     },
     "root": {
         "handlers": ["console"],
-        "level": "WARNING",
+        "level": "INFO",
     },
 }

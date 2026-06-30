@@ -28,7 +28,7 @@ class GptImageProvider(ImageProvider):
 
     def generate(self, prompt: str, query: str | None = None,
                  negative: str | None = None, api_key=None,
-                 model: str | None = None) -> bytes:
+                 model: str | None = None, on_preview_url=None) -> bytes:
         from openai import OpenAI
 
         if negative:
@@ -42,7 +42,7 @@ class GptImageProvider(ImageProvider):
 
     def edit(self, prompt: str, reference,
              negative: str | None = None, api_key=None,
-             model: str | None = None) -> bytes:
+             model: str | None = None, on_preview_url=None) -> bytes:
         from openai import OpenAI
 
         if negative:

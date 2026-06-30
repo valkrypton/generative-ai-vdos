@@ -1,6 +1,6 @@
 import json
 
-from celery import chain, group
+from celery import chain, chord, group
 from django.db import transaction
 from django.http import Http404
 from django.http import StreamingHttpResponse
@@ -19,6 +19,7 @@ from .serializers import (ProjectSerializer, ProjectCreateSerializer,
                           _absolute_media_url)
 from .services import ProjectService, _get_redis, _eager_thread
 from .tasks import (
+    mark_pipeline_failed,
     run_assemble_stage,
     run_image_stage,
     run_refine_stage,
@@ -329,14 +330,25 @@ def _dispatch_generate_stage(project_id: str) -> None:
         .values_list("index", flat=True)
     )
 
-    if scene_indices:
-        tasks = [run_image_stage.s(project_id, scene_indices[0])]
-        tasks += [run_image_stage.si(project_id, idx) for idx in scene_indices[1:]]
-        tasks += [transition_to_image_review.si(project_id)]
-        _eager_thread(chain(*tasks).delay)
-    else:
-        _eager_thread(transition_to_image_review.delay, project_id)
+    rest = chain(
+        run_video_stage.si(project_id),
+        run_voice_stage.si(project_id),
+        run_assemble_stage.si(project_id),
+    )
 
+    if scene_indices:
+        canvas = chord(
+            group(run_image_stage.si(project_id, idx) for idx in scene_indices),
+            chain(transition_to_image_review.si(project_id), rest),
+        )
+    else:
+        canvas = rest
+
+    _eager_thread(
+        lambda: canvas.apply_async(
+            link_error=mark_pipeline_failed.s(project_id=str(project_id)),
+        )
+    )
 
 def _dispatch_voice_assembly(project_id: str) -> None:
     _eager_thread(chain(

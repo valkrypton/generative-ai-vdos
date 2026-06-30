@@ -96,6 +96,7 @@ def generate_scene_image(
     plan: ShotPlan, index: int, primary: ImageProvider,
     fallback: bool = True, char_refs: dict | None = None,
     api_key=None, model: str | None = None,
+    on_preview_url=None,
 ) -> tuple[bytes, ImageProvider]:
     """Generate one scene's image bytes. With fallback (auto-picked backend),
     failures fall through the remaining providers; an explicitly forced backend
@@ -158,7 +159,8 @@ def generate_scene_image(
                 edit_prompt = (prompt + f" Identity references — {mapping}. "
                                + consistency)
             try:
-                return primary.edit(edit_prompt, refs, negative=merged_negative, api_key=api_key, model=model), primary
+                return primary.edit(edit_prompt, refs, negative=merged_negative, api_key=api_key,
+                                    model=model, on_preview_url=on_preview_url), primary
             except Exception as e:
                 print(f"  images: scene {index + 1} reference edit failed ({e}); "
                       "falling back to text-to-image")
@@ -172,7 +174,8 @@ def generate_scene_image(
         if editor is None:
             raise RuntimeError("reference_image needs a backend with edit support "
                                "(gpt-image-1 — set OPENAI_API_KEY)")
-        return editor.edit(prompt, ref, negative=merged_negative, api_key=api_key, model=model), editor
+        return editor.edit(prompt, ref, negative=merged_negative, api_key=api_key,
+                           model=model, on_preview_url=on_preview_url), editor
 
     chain = [primary]
     if fallback:
@@ -180,7 +183,9 @@ def generate_scene_image(
     last_error = None
     for provider in chain:
         try:
-            data = provider.generate(prompt, query=scene_prompt, negative=merged_negative, api_key=api_key, model=model)
+            data = provider.generate(prompt, query=scene_prompt, negative=merged_negative,
+                                     api_key=api_key, model=model,
+                                     on_preview_url=on_preview_url if provider is primary else None)
             return data, provider
         except Exception as e:
             last_error = e
