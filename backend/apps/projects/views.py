@@ -18,7 +18,14 @@ from .serializers import (ProjectSerializer, ProjectCreateSerializer,
                           SceneSerializer, SceneUpdateSerializer, JobLogSerializer,
                           _absolute_media_url)
 from .services import ProjectService, _get_redis, _eager_thread
-from .tasks import run_assemble_stage, run_image_stage, run_refine_stage, run_video_stage, run_voice_stage
+from .tasks import (
+    run_assemble_stage,
+    run_image_stage,
+    run_refine_stage,
+    run_video_stage,
+    run_voice_stage,
+    transition_to_image_review,
+)
 from .choices import MediaStatus, Status, VoiceStatus
 from apps.storage import storage_provider
 from apps.projects.models import LLMModel
@@ -218,7 +225,12 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="regenerate-images")
     def regenerate_images(self, request, pk=None):
-        project = self.get_object()
+        project = self._get_locked_project()
+        if project.status == Status.IMAGE_REVIEW:
+            return Response(
+                {"detail": "Cannot bulk-regenerate images during review; regenerate scenes individually."},
+                status=status.HTTP_409_CONFLICT,
+            )
         scene_indices = list(
             Scene.objects.filter(project=project)
             .values_list("index", flat=True)
@@ -234,7 +246,12 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="regenerate-voiceovers")
     def regenerate_voiceovers(self, request, pk=None):
-        project = self.get_object()
+        project = self._get_locked_project()
+        if project.status == Status.IMAGE_REVIEW:
+            return Response(
+                {"detail": "Cannot regenerate voiceovers during image review."},
+                status=status.HTTP_409_CONFLICT,
+            )
         voice = request.data.get("narrator_voice") or request.data.get("voice")
         if isinstance(voice, str) and voice.strip():
             project.narrator_voice = voice.strip()
@@ -245,6 +262,26 @@ class ProjectViewSet(viewsets.ModelViewSet):
         project.save(update_fields=["stale", "updated_at"])
         _eager_thread(run_voice_stage.delay, str(project.id))
         return Response({"queued": 1}, status=status.HTTP_202_ACCEPTED)
+
+    @action(detail=True, methods=["post"], url_path="approve-images")
+    def approve_images(self, request, pk=None):
+        with transaction.atomic():
+            project = self._get_locked_project()
+            if project.status != Status.IMAGE_REVIEW:
+                return Response(
+                    {"detail": f"Cannot approve images from {project.status} state."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            not_done = project.scenes.select_for_update().exclude(media_status=MediaStatus.DONE)
+            if not_done.exists():
+                return Response(
+                    {"detail": "All scenes must be DONE before approving."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            project.transition_status(Status.VIDEO_GENERATING)
+        project_id = str(project.id)
+        transaction.on_commit(lambda: _dispatch_voice_assembly(project_id))
+        return Response(self.get_serializer(project).data, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=True, methods=["post"])
     def reassemble(self, request, pk=None):
@@ -295,12 +332,18 @@ def _dispatch_generate_stage(project_id: str) -> None:
     if scene_indices:
         tasks = [run_image_stage.s(project_id, scene_indices[0])]
         tasks += [run_image_stage.si(project_id, idx) for idx in scene_indices[1:]]
-        tasks += [run_video_stage.si(project_id), run_voice_stage.si(project_id),
-                  run_assemble_stage.si(project_id)]
+        tasks += [transition_to_image_review.si(project_id)]
+        _eager_thread(chain(*tasks).delay)
     else:
-        tasks = [run_voice_stage.s(project_id), run_assemble_stage.si(project_id)]
+        _eager_thread(transition_to_image_review.delay, project_id)
 
-    _eager_thread(chain(*tasks).delay)
+
+def _dispatch_voice_assembly(project_id: str) -> None:
+    _eager_thread(chain(
+        run_video_stage.s(project_id),
+        run_voice_stage.si(project_id),
+        run_assemble_stage.si(project_id),
+    ).delay)
 
 
 def _dispatch_retry_stage(project_id: str) -> None:

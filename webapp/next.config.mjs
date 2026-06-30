@@ -20,6 +20,12 @@ const nextConfig = {
         source: '/api/:path*',
         destination: `${djangoOrigin}/api/:path*/`,
       },
+      {
+        // Django serves local media files at /media/ in development;
+        // the download endpoint redirects here, so the browser must reach Django.
+        source: '/media/:path*',
+        destination: `${djangoOrigin}/media/:path*`,
+      },
     ]
   },
   images: {

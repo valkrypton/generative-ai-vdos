@@ -26,7 +26,10 @@ logger = logging.getLogger(__name__)
 
 
 def get_work_dir(project):
-    return Path(settings.MEDIA_ROOT) / str(project.owner_id) / str(project.id)
+    # Must be outside MEDIA_ROOT so _download_field never copies a file onto
+    # its own storage path (open-for-write truncates before open-for-read).
+    base = Path(settings.BASE_DIR).parent / "workdirs"
+    return base / str(project.owner_id) / str(project.id)
 
 
 def build_shot_plan(project) -> ShotPlan:

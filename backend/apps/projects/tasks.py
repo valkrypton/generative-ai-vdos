@@ -1,6 +1,7 @@
 import logging
 
 from celery import shared_task
+from django.db import transaction
 
 from apps.storage import storage_provider
 from apps.projects.choices import MediaStatus, Level, Stage, Status, VoiceStatus
@@ -163,11 +164,17 @@ def run_image_stage(self, project_id, scene_index):
         scene.media_status = MediaStatus.FAILED
         scene.save(update_fields=["media_status", "updated_at"])
         is_transient = isinstance(exc, (ConnectionError, TimeoutError))
-        msg = (f"Scene {scene_index} failed (will retry)" if is_transient
-               else f"Scene {scene_index} failed: {exc}")
-        publish_event(project_id, Stage.IMAGES, Level.ERROR, msg,
+        if is_transient:
+            publish_event(project_id, Stage.IMAGES, Level.ERROR,
+                          f"Scene {scene_index} failed (will retry)",
+                          scene_index=scene_index)
+            raise  # let Celery autoretry
+        # Non-transient: log and return so the Celery chain continues to
+        # transition_to_image_review, letting the user regenerate this scene.
+        publish_event(project_id, Stage.IMAGES, Level.ERROR,
+                      f"Scene {scene_index} failed: {exc}",
                       scene_index=scene_index)
-        raise
+        return {"project_id": str(project_id), "scene_index": scene_index, "failed": True}
 
     return {"project_id": str(project_id), "scene_index": scene_index}
 
@@ -292,6 +299,31 @@ def run_assemble_stage(self, project_id):
         fail_project(project, project_id, Stage.ASSEMBLE, exc)
         raise
 
+    return {"project_id": project_id}
+
+
+@shared_task
+def transition_to_image_review(project_id):
+    with transaction.atomic():
+        project = Project.objects.select_for_update().get(id=project_id)
+        if project.status != Status.GENERATING:
+            publish_event(project_id, Stage.IMAGES, Level.WARN,
+                          f"transition_to_image_review skipped: project is {project.status}")
+            return {"project_id": project_id}
+        # Lock scene rows so a concurrent regenerate cannot change media_status
+        # between the terminal check and the status transition.
+        non_terminal = project.scenes.select_for_update().exclude(
+            media_status__in=[MediaStatus.DONE, MediaStatus.FAILED]
+        )
+        if non_terminal.exists():
+            publish_event(project_id, Stage.IMAGES, Level.WARN,
+                          "transition_to_image_review: some scenes still running — skipping")
+            return {"project_id": project_id}
+        project.transition_status(Status.IMAGE_REVIEW)
+    publish_event(
+        project_id, Stage.IMAGES, Level.INFO,
+        "Images are ready for review. Approve them to continue generating the video.",
+    )
     return {"project_id": project_id}
 
 

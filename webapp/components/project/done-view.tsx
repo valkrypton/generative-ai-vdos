@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useCallback, useEffect, useRef, useState, useTransition } from 'react'
+import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Project, Scene } from '@/lib/project-types'
 import { Button } from '@/components/ui/button'
@@ -12,90 +12,25 @@ interface Props {
   onUpdate: (updates: Partial<Project>) => void
 }
 
-const VOICES = [
-  { value: 'en-US-AndrewNeural', label: 'Andrew (US Male)' },
-  { value: 'en-US-RyanNeural', label: 'Ryan (US Male)' },
-  { value: 'en-US-AvaNeural', label: 'Ava (US Female)' },
-]
-
-// Presigned S3 URLs already contain '?' (new signature per request) so the browser
-// never caches them across regens. Local-dev URLs have no '?' — append updated_at
-// so the browser treats the re-generated image as a distinct resource.
 function stableMediaSrc(scene: Scene): string | undefined {
   if (!scene.media_path) return undefined
   if (scene.media_path.includes('?')) return scene.media_path
   return `${scene.media_path}?v=${encodeURIComponent(scene.updated_at ?? '')}`
 }
 
-function stableAudioSrc(scene: Scene): string | undefined {
-  if (!scene.audio_path || scene.voice_status !== 'DONE') return undefined
-  if (scene.audio_path.includes('?')) return scene.audio_path
-  return `${scene.audio_path}?v=${encodeURIComponent(scene.updated_at ?? '')}`
-}
-
 function isVideo(path: string): boolean {
   return path.split('?')[0].endsWith('.mp4')
 }
 
-const IMG_STATUS_COLOR: Record<string, string> = {
-  PENDING: '#9aa3b2',
-  RUNNING: '#f0a35e',
-  DONE:    '#5cd6a4',
-  FAILED:  '#f06a6a',
-}
-
-const TEXTAREA_CLASS =
-  'w-full bg-[#171a21] text-[#e7e9ee] border border-[#2a2f3a] rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:ring-1 focus:ring-[#6ea8fe]'
-
 export default function DoneView({ project, onUpdate }: Props) {
   const router = useRouter()
-  const [scenes, setScenes] = useState<Scene[]>(project.scenes)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [isRegenAll, startRegenAll] = useTransition()
-  const [isRevoiceAll, startRevoiceAll] = useTransition()
   const [isDeleting, startDelete] = useTransition()
 
   function handleDelete() {
     startDelete(async () => {
       const res = await fetch(`/api/projects/${project.id}/`, { method: 'DELETE' })
       if (res.status === 204) { router.refresh(); router.push('/home') }
-    })
-  }
-
-  // stable refs so React.memo on DoneSceneCard doesn't re-render siblings
-  const updateSceneStatus = useCallback(
-    (index: number, media_status: Scene['media_status']) => {
-      setScenes(prev =>
-        prev.map(s => (s.index === index ? { ...s, media_status } : s)),
-      )
-    },
-    [],
-  )
-
-  const updateScene = useCallback((updated: Scene) => {
-    setScenes(prev => prev.map(s => s.index === updated.index ? updated : s))
-  }, [])
-
-  const setStale = useCallback(() => {
-    onUpdate({ stale: true })
-  }, [onUpdate])
-
-  function handleRegenAll() {
-    startRegenAll(async () => {
-      await fetch(`/api/projects/${project.id}/regenerate-images/`, {
-        method: 'POST',
-      })
-      setScenes(prev => prev.map(s => ({ ...s, media_status: 'RUNNING' as const })))
-      onUpdate({ stale: true })
-    })
-  }
-
-  function handleRevoiceAll() {
-    startRevoiceAll(async () => {
-      await fetch(`/api/projects/${project.id}/regenerate-voiceovers/`, {
-        method: 'POST',
-      })
-      onUpdate({ stale: true })
     })
   }
 
@@ -130,304 +65,51 @@ export default function DoneView({ project, onUpdate }: Props) {
         )}
       </div>
 
-      {/* Video hero */}
       <VideoPlayer
         projectId={project.id}
         stale={project.stale}
         onRebuild={(updated) => onUpdate(updated)}
       />
 
-      {/* Scene strip header */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <p className="text-[10px] uppercase tracking-[0.2em] font-medium text-[#4a5568]">
+      <div>
+        <p className="text-[10px] uppercase tracking-[0.2em] font-medium text-[#4a5568] mb-2">
           Scenes
         </p>
-        <div className="flex items-center gap-2">
-          <Button
-            disabled={isRegenAll}
-            onClick={handleRegenAll}
-            className="bg-transparent border border-[#2a2f3a] text-[#e7e9ee] text-xs px-3 py-1.5 rounded-lg hover:bg-[#252a35] disabled:opacity-50"
-          >
-            {isRegenAll ? 'Queuing…' : 'Regenerate all images'}
-          </Button>
-          <Button
-            disabled={isRevoiceAll}
-            onClick={handleRevoiceAll}
-            className="bg-transparent border border-[#2a2f3a] text-[#e7e9ee] text-xs px-3 py-1.5 rounded-lg hover:bg-[#252a35] disabled:opacity-50"
-          >
-            {isRevoiceAll ? 'Queuing…' : 'Regenerate all voiceovers'}
-          </Button>
+        <div className="space-y-2">
+          {project.scenes.map(scene => (
+            <div
+              key={scene.id}
+              className="bg-[#1e222b] border border-[#2a2f3a] rounded-[10px] flex items-center gap-3 px-3 py-2.5"
+            >
+              <div className="w-16 h-10 rounded bg-[#171a21] shrink-0 overflow-hidden flex items-center justify-center">
+                {scene.media_path ? (
+                  isVideo(scene.media_path) ? (
+                    <video
+                      src={stableMediaSrc(scene)}
+                      playsInline
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <img
+                      src={stableMediaSrc(scene)}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  )
+                ) : (
+                  <span className="text-[#4a5568] text-[10px]">none</span>
+                )}
+              </div>
+              <span className="text-xs font-mono text-[#9aa3b2] shrink-0">
+                {String(scene.index + 1).padStart(2, '0')}
+              </span>
+              <span className="text-xs text-[#9aa3b2] truncate flex-1">
+                {scene.narration}
+              </span>
+            </div>
+          ))}
         </div>
-      </div>
-
-      {/* Expandable scene cards */}
-      <div className="space-y-2">
-        {scenes.map(scene => (
-          <DoneSceneCard
-            key={scene.id}
-            scene={scene}
-            projectId={project.id}
-            defaultVoice={project.narrator_voice}
-            onStatusChange={updateSceneStatus}
-            onSceneUpdate={updateScene}
-            onSetStale={setStale}
-          />
-        ))}
       </div>
     </div>
   )
 }
-
-// React.memo prevents sibling re-renders when one scene's status changes
-const DoneSceneCard = memo(function DoneSceneCard({
-  scene,
-  projectId,
-  defaultVoice,
-  onStatusChange,
-  onSceneUpdate,
-  onSetStale,
-}: {
-  scene: Scene
-  projectId: string
-  defaultVoice: string
-  onStatusChange: (index: number, status: Scene['media_status']) => void
-  onSceneUpdate: (updated: Scene) => void
-  onSetStale: () => void
-}) {
-  const [expanded, setExpanded] = useState(false)
-  const [mediaPrompt, setMediaPrompt] = useState(scene.media_prompt)
-  const [narration, setNarration] = useState(scene.narration)
-  const [voice, setVoice] = useState(scene.voice || defaultVoice)
-  const [isRegenerating, startRegen] = useTransition()
-  const [isRevoicing, startRevoice] = useTransition()
-  const mediaPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const voicePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  useEffect(() => () => {
-    if (mediaPollRef.current) clearInterval(mediaPollRef.current)
-    if (voicePollRef.current) clearInterval(voicePollRef.current)
-  }, [])
-
-  const imgColor = IMG_STATUS_COLOR[scene.media_status] ?? '#9aa3b2'
-
-  function handleRegen() {
-    startRegen(async () => {
-      onStatusChange(scene.index, 'RUNNING')
-      await fetch(`/api/projects/${projectId}/scenes/${scene.index}/regenerate/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: mediaPrompt }),
-      })
-      // Poll until the background task finishes so media_path updates without a reload.
-      if (mediaPollRef.current) clearInterval(mediaPollRef.current)
-      mediaPollRef.current = setInterval(async () => {
-        try {
-          const res = await fetch(`/api/projects/${projectId}/scenes/${scene.index}/`)
-          if (!res.ok) return
-          const updated: Scene = await res.json()
-          onStatusChange(scene.index, updated.media_status)
-          if (updated.media_status === 'DONE' || updated.media_status === 'FAILED') {
-            clearInterval(mediaPollRef.current!)
-            mediaPollRef.current = null
-            onSceneUpdate(updated)
-            if (updated.media_status === 'DONE') onSetStale()
-          }
-        } catch { /* keep polling */ }
-      }, 2000)
-    })
-  }
-
-  function handleRevoice() {
-    startRevoice(async () => {
-      const res = await fetch(`/api/projects/${projectId}/scenes/${scene.index}/revoice/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ narration, voice }),
-      })
-      if (!res.ok) return
-
-      const queued: Scene = await res.json()
-      onSceneUpdate(queued)
-      if (queued.voice_status === 'DONE' || queued.voice_status === 'FAILED') {
-        if (queued.voice_status === 'DONE') onSetStale()
-        return
-      }
-
-      if (voicePollRef.current) clearInterval(voicePollRef.current)
-      voicePollRef.current = setInterval(async () => {
-        try {
-          const pollRes = await fetch(`/api/projects/${projectId}/scenes/${scene.index}/`)
-          if (!pollRes.ok) return
-          const updated: Scene = await pollRes.json()
-          onSceneUpdate(updated)
-          if (updated.voice_status === 'DONE' || updated.voice_status === 'FAILED') {
-            clearInterval(voicePollRef.current!)
-            voicePollRef.current = null
-            if (updated.voice_status === 'DONE') onSetStale()
-          }
-        } catch { /* keep polling */ }
-      }, 2000)
-    })
-  }
-
-  return (
-    <div className="bg-[#1e222b] border border-[#2a2f3a] rounded-[10px] overflow-hidden">
-      {/* Collapsed header row — always visible */}
-      <button
-        type="button"
-        onClick={() => setExpanded(e => !e)}
-        className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-[#252a35] transition-colors text-left"
-      >
-        {/* Thumbnail */}
-        <div className="w-16 h-10 rounded bg-[#171a21] shrink-0 overflow-hidden flex items-center justify-center">
-          {scene.media_path && scene.media_status === 'DONE' ? (
-            isVideo(scene.media_path) ? (
-              <div className="relative w-full h-full">
-                <video
-                  src={stableMediaSrc(scene)}
-                  playsInline
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-5 h-5 rounded-full bg-black/50 flex items-center justify-center">
-                    <span className="text-white text-[8px] pl-0.5">▶</span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <img
-                src={stableMediaSrc(scene)}
-                alt=""
-                className="w-full h-full object-cover"
-              />
-            )
-          ) : scene.media_status === 'RUNNING' ? (
-            <div className="w-4 h-4 rounded-full border border-[#f0a35e] border-t-transparent animate-spin" />
-          ) : (
-            <span className="text-[#4a5568] text-[10px]">{scene.media_status.toLowerCase()}</span>
-          )}
-        </div>
-
-        {/* Scene label */}
-        <span className="text-xs font-mono text-[#9aa3b2] shrink-0">
-          {String(scene.index + 1).padStart(2, '0')}
-        </span>
-
-        {/* Status dot */}
-        <span
-          className="w-1.5 h-1.5 rounded-full shrink-0"
-          style={{ backgroundColor: imgColor }}
-        />
-
-        {/* Narration preview */}
-        <span className="text-xs text-[#9aa3b2] truncate flex-1">
-          {narration || scene.narration}
-        </span>
-
-        {/* Expand toggle */}
-        <span className="text-[10px] text-[#4a5568] shrink-0 font-mono">
-          {expanded ? '▴' : '▾'}
-        </span>
-      </button>
-
-      {/* Expanded edit panel */}
-      {expanded ? (
-        <div className="border-t border-[#2a2f3a] relative overflow-hidden">
-          {/* Ghost numeral — signature design element */}
-          <span
-            aria-hidden
-            className="absolute right-3 top-0 text-[88px] font-bold leading-none text-[#2a2f3a] select-none pointer-events-none"
-          >
-            {String(scene.index + 1).padStart(2, '0')}
-          </span>
-
-          <div className="relative z-10 p-4 space-y-5">
-            {/* Full image */}
-            <div className="aspect-video bg-[#171a21] rounded-lg overflow-hidden flex items-center justify-center">
-              {scene.media_path && scene.media_status === 'DONE' ? (
-                isVideo(scene.media_path) ? (
-                  <video
-                    src={stableMediaSrc(scene)}
-                    controls autoPlay muted loop playsInline
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <img
-                    src={stableMediaSrc(scene)}
-                    alt={`Scene ${scene.index + 1}`}
-                    className="w-full h-full object-cover"
-                  />
-                )
-              ) : scene.media_status === 'RUNNING' ? (
-                <div className="w-7 h-7 rounded-full border-2 border-[#f0a35e] border-t-transparent animate-spin" />
-              ) : scene.media_status === 'FAILED' ? (
-                <span className="text-[#f06a6a] text-2xl">✕</span>
-              ) : (
-                <span className="text-[#4a5568] text-xs">pending</span>
-              )}
-            </div>
-
-            {/* Image prompt */}
-            <div className="space-y-2">
-              <label className="block text-xs text-[#9aa3b2]">Image prompt</label>
-              <textarea
-                value={mediaPrompt}
-                onChange={e => setMediaPrompt(e.target.value)}
-                rows={2}
-                className={TEXTAREA_CLASS}
-              />
-              <Button
-                disabled={isRegenerating}
-                onClick={handleRegen}
-                className="bg-transparent border border-[#2a2f3a] text-[#e7e9ee] text-xs px-3 py-2 rounded-lg hover:bg-[#252a35] disabled:opacity-50"
-              >
-                {isRegenerating ? 'Queuing…' : 'Regenerate scene'}
-              </Button>
-            </div>
-
-            {/* Narration + voice */}
-            <div className="space-y-2">
-              <label className="block text-xs text-[#9aa3b2]">Narration</label>
-              <textarea
-                value={narration}
-                onChange={e => setNarration(e.target.value)}
-                rows={2}
-                className={TEXTAREA_CLASS}
-              />
-              <div className="flex items-center gap-2 flex-wrap">
-                <select
-                  value={voice}
-                  onChange={e => setVoice(e.target.value)}
-                  className="flex-1 min-w-[160px] bg-[#171a21] text-[#e7e9ee] border border-[#2a2f3a] rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#6ea8fe]"
-                >
-                  {VOICES.map(v => (
-                    <option key={v.value} value={v.value}>
-                      {v.label}
-                    </option>
-                  ))}
-                </select>
-                <Button
-                  disabled={isRevoicing}
-                  onClick={handleRevoice}
-                  className="bg-transparent border border-[#2a2f3a] text-[#e7e9ee] text-xs px-3 py-2 rounded-lg hover:bg-[#252a35] disabled:opacity-50"
-                >
-                  {isRevoicing ? 'Queuing…' : 'Re-voice'}
-                </Button>
-              </div>
-              {stableAudioSrc(scene) ? (
-                <audio
-                  controls
-                  preload="none"
-                  src={stableAudioSrc(scene)}
-                  className="w-full h-8"
-                />
-              ) : scene.voice_status === 'RUNNING' ? (
-                <p className="text-xs text-[#f0a35e]">Generating voiceover…</p>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  )
-})

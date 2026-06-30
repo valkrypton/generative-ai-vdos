@@ -7,6 +7,7 @@ import PlanningView from './planning-view'
 import PlanEditor from './plan-editor'
 import DoneView from './done-view'
 import FailedView from './failed-view'
+import ImageReviewView from './image-review-view'
 
 // bundle-dynamic-imports: defer EventSource-heavy component until needed
 const GeneratingView = dynamic(() => import('./generating-view'), { ssr: false })
@@ -32,6 +33,9 @@ export default function ProjectPage({ initialProject }: Props) {
   }
   if (status === 'GENERATING' || status === 'VIDEO_GENERATING') {
     return <GeneratingView project={project} onUpdate={updateProject} />
+  }
+  if (status === 'IMAGE_REVIEW') {
+    return <ImageReviewView project={project} onUpdate={updateProject} />
   }
   if (status === 'DONE') {
     return <DoneView project={project} onUpdate={updateProject} />
