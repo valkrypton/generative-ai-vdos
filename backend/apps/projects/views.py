@@ -19,6 +19,7 @@ from .serializers import (ProjectSerializer, ProjectCreateSerializer,
                           _absolute_media_url)
 from .services import ProjectService, _get_redis, _eager_thread
 from .tasks import (
+    mark_pipeline_failed,
     run_assemble_stage,
     run_image_stage,
     run_refine_stage,
@@ -338,12 +339,16 @@ def _dispatch_generate_stage(project_id: str) -> None:
     if scene_indices:
         canvas = chord(
             group(run_image_stage.si(project_id, idx) for idx in scene_indices),
-            rest,
+            chain(transition_to_image_review.si(project_id), rest),
         )
     else:
         canvas = rest
 
-    _eager_thread(canvas.delay)
+    _eager_thread(
+        lambda: canvas.apply_async(
+            link_error=mark_pipeline_failed.s(project_id=str(project_id)),
+        )
+    )
 
 def _dispatch_voice_assembly(project_id: str) -> None:
     _eager_thread(chain(

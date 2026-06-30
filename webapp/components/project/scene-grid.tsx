@@ -27,7 +27,7 @@ export default function SceneGrid({ scenes }: { scenes: Scene[] }) {
               const displaySrc =
                 scene.media_status === 'DONE'
                   ? scene.media_path || null
-                  : scene.preview_url || null
+                  : scene.preview_url || scene.media_path || null
 
               if (!displaySrc) return null
 

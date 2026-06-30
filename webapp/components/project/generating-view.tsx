@@ -112,9 +112,7 @@ export default function GeneratingView({ project, onUpdate }: Props) {
       }
     }
 
-    es.onerror = () => {
-      es.close()
-    }
+    es.onerror = () => {}
 
     return () => {
       es.close()

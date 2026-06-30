@@ -36,15 +36,26 @@ redis.call('decr', KEYS[1])
 return 0
 """
 
+_release_lua = """
+local n = redis.call('get', KEYS[1])
+if not n then return 0 end
+n = redis.call('decr', KEYS[1])
+if n <= 0 then redis.call('del', KEYS[1]) end
+return n
+"""
+
 
 @contextmanager
 def _concurrency_slot():
     import redis as redis_lib
-    r = redis_lib.from_url(os.environ["CELERY_BROKER_URL"])
+    r = redis_lib.from_url(os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0"))
     acquire = r.register_script(_acquire_lua)
+    release = r.register_script(_release_lua)
     deadline = time.monotonic() + _SEM_WAIT
+    acquired = False
     while time.monotonic() < deadline:
         if acquire(keys=[_SEM_KEY], args=[_CONCURRENT_LIMIT]):
+            acquired = True
             break
         time.sleep(0.5)
     else:
@@ -52,7 +63,8 @@ def _concurrency_slot():
     try:
         yield
     finally:
-        r.decr(_SEM_KEY)
+        if acquired:
+            release(keys=[_SEM_KEY])
 
 
 
