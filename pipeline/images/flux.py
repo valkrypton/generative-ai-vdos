@@ -22,7 +22,7 @@ class FluxProvider(ImageProvider):
 
     def generate(self, prompt: str, query: str | None = None,
                  negative: str | None = None, api_key=None,
-                 model: str | None = None) -> bytes:
+                 model: str | None = None, on_preview_url=None) -> bytes:
         import replicate as replicate_pkg
 
         model = model or os.environ.get("REPLICATE_IMAGE_MODEL", "").strip()

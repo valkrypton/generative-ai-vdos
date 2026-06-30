@@ -42,11 +42,12 @@ class SceneSerializer(serializers.ModelSerializer):
         fields = [
             "id", "index", "narration", "media_prompt", "animate", "voice",
             "on_screen_text", "negative_prompt",
+            "preview_url",
             "media_path", "audio_path", "media_status", "voice_status", "media_provider",
             "created_at", "updated_at",
         ]
         read_only_fields = [
-            "id", "index", "media_status", "voice_status",
+            "id", "index", "preview_url", "media_status", "voice_status",
             "media_provider", "created_at", "updated_at",
         ]
 

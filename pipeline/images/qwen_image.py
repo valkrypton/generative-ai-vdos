@@ -7,17 +7,55 @@ the qwen-image models, so images are $0 while it lasts.
 import base64
 import io
 import os
+import time
 import urllib.request
+from contextlib import contextmanager
 from pathlib import Path
 
 from PIL import Image
 from dashscope import MultiModalConversation
 
+import logging
+
 from ..env import configure_dashscope_sdk
 from .base import ImageProvider
 from .util import to_png_bytes
 
+logger = logging.getLogger(__name__)
+
 SIZE = "1664*928"  # native 16:9; fit_cover upscales to 1920x1080
+_CONCURRENT_LIMIT = 2
+_SEM_KEY = "dashscope:image:concurrent"
+_SEM_WAIT = 300
+
+_acquire_lua = """
+local n = redis.call('incr', KEYS[1])
+redis.call('expire', KEYS[1], 600)
+if n <= tonumber(ARGV[1]) then return 1 end
+redis.call('decr', KEYS[1])
+return 0
+"""
+
+
+@contextmanager
+def _concurrency_slot():
+    import redis as redis_lib
+    r = redis_lib.from_url(os.environ["CELERY_BROKER_URL"])
+    acquire = r.register_script(_acquire_lua)
+    deadline = time.monotonic() + _SEM_WAIT
+    while time.monotonic() < deadline:
+        if acquire(keys=[_SEM_KEY], args=[_CONCURRENT_LIMIT]):
+            break
+        time.sleep(0.5)
+    else:
+        raise TimeoutError("Timed out waiting for DashScope concurrency slot")
+    try:
+        yield
+    finally:
+        r.decr(_SEM_KEY)
+
+
+
 MAX_PROMPT = 1500  # warn before cutting; most models accept well beyond this
 MAX_REFS = 3  # cap on reference images sent per edit
 
@@ -58,7 +96,13 @@ class QwenImageProvider(ImageProvider):
         return bool(os.environ.get("DASHSCOPE_API_KEY"))
 
     def _post(self, model: str, content: list,
-              parameters: dict, api_key=None) -> bytes:
+              parameters: dict, api_key=None, on_preview_url=None) -> bytes:
+        with _concurrency_slot():
+            return self._post_inner(model, content, parameters, api_key,
+                                    on_preview_url=on_preview_url)
+
+    def _post_inner(self, model: str, content: list,
+                    parameters: dict, api_key=None, on_preview_url=None) -> bytes:
         configure_dashscope_sdk()
         key = api_key.decrypt() if api_key else os.environ.get("DASHSCOPE_API_KEY")
         rsp = MultiModalConversation.call(
@@ -70,13 +114,18 @@ class QwenImageProvider(ImageProvider):
         if rsp.status_code != 200:
             raise RuntimeError(f"qwen image failed [{rsp.code}]: {rsp.message}")
         image_url = rsp.output.choices[0].message.content[0]["image"]
+        if on_preview_url is not None:
+            try:
+                on_preview_url(image_url)
+            except Exception as e:
+                logger.warning("on_preview_url callback failed (ignored): %s", e)
         with urllib.request.urlopen(image_url, timeout=60) as resp:
             img = Image.open(io.BytesIO(resp.read())).convert("RGB")
         return to_png_bytes(img)
 
     def generate(self, prompt: str, query: str | None = None,
                  negative: str | None = None, api_key=None,
-                 model: str | None = None) -> bytes:
+                 model: str | None = None, on_preview_url=None) -> bytes:
         if len(prompt) > MAX_PROMPT:
             print(f"  images: WARNING prompt is {len(prompt)} chars, cutting to "
                   f"{MAX_PROMPT} — some detail at the end will be lost")
@@ -86,11 +135,11 @@ class QwenImageProvider(ImageProvider):
             "prompt_extend": False,
             "watermark": False,
             "negative_prompt": _negative_prompt(negative),
-        }, api_key=api_key)
+        }, api_key=api_key, on_preview_url=on_preview_url)
 
     def edit(self, prompt: str, reference,
              negative: str | None = None, api_key=None,
-             model: str | None = None) -> bytes:
+             model: str | None = None, on_preview_url=None) -> bytes:
         refs = list(reference) if isinstance(reference, (list, tuple)) else [reference]
         content = [{"image": "data:image/png;base64,"
                     + base64.b64encode(Path(r).read_bytes()).decode()}
@@ -101,4 +150,4 @@ class QwenImageProvider(ImageProvider):
             "prompt_extend": False,
             "watermark": False,
             "negative_prompt": _negative_prompt(negative),
-        }, api_key=api_key)
+        }, api_key=api_key, on_preview_url=on_preview_url)

@@ -62,9 +62,9 @@ prod:
 	@redis-cli ping >/dev/null 2>&1 || (echo "ERROR: Redis not running - brew services start redis" && exit 1)
 	$(MANAGE) collectstatic --no-input
 	@echo "Starting Celery worker..."
-	$(PY) -m celery -A config worker -l info --concurrency 4 &
+	PYTHONPATH=backend $(PY) -m celery -A config worker -l info --concurrency 4 &
 	@echo "Starting Django via gunicorn on :8000..."
-	$(VENV)/bin/gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 2
+	$(VENV)/bin/gunicorn config.wsgi:application --bind 0.0.0.0:8000 --bind [::]:8000 --worker-class gthread --workers 2 --threads 8 --timeout 120 --chdir backend
 
 test:
 	uv sync --all-extras

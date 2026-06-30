@@ -9,16 +9,6 @@ dependencies = [
     "edge-tts>=6.1",
     "pillow>=10.0",
     "dashscope>=1.25.24",
-]
-
-[project.optional-dependencies]
-replicate = ["replicate>=0.32"]
-faceswap = [
-    "insightface>=0.7",
-    "onnxruntime>=1.16",
-    "opencv-python-headless>=4.8",
-]
-webapp = [
     "Django>=5.2,<5.3",
     "djangorestframework>=3.17.1",
     "django-cors-headers>=4.4",
@@ -29,6 +19,15 @@ webapp = [
     "python-dotenv>=1.0",
     "django-storages[s3]>=1.14",
     "boto3>=1.34",
+    "gunicorn>=26.0.0"
+]
+
+[project.optional-dependencies]
+replicate = ["replicate>=0.32"]
+faceswap = [
+    "insightface>=0.7",
+    "onnxruntime>=1.16",
+    "opencv-python-headless>=4.8",
 ]
 
 [dependency-groups]

@@ -17,7 +17,7 @@ class PlaceholderProvider(ImageProvider):
 
     def generate(self, prompt: str, query: str | None = None,
                  negative: str | None = None, api_key=None,
-                 model: str | None = None) -> bytes:
+                 model: str | None = None, on_preview_url=None) -> bytes:
         h = hashlib.sha256(prompt.encode()).digest()
         top = (h[0] % 120 + 20, h[1] % 120 + 20, h[2] % 120 + 40)
         bottom = (h[3] % 120 + 20, h[4] % 120 + 40, h[5] % 120 + 20)

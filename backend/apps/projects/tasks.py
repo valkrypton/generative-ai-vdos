@@ -1,4 +1,5 @@
 import logging
+import time
 
 from celery import shared_task
 from django.db import transaction
@@ -28,6 +29,7 @@ from pipeline.script_agent import generate_shot_plan, revise_shot_plan
 from pipeline.styles import PRESETS
 
 logger = logging.getLogger(__name__)
+
 
 _PLAN_TASK_OPTS = dict(
     bind=True,

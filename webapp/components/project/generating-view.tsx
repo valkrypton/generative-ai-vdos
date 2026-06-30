@@ -90,6 +90,38 @@ export default function GeneratingView({ project, onUpdate }: Props) {
   }, [project.id])
 
   useEffect(() => {
+    const es = new EventSource(`/api/projects/${project.id}/events/`)
+
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data)
+        if (data.scene_index != null && data.preview_url) {
+          setScenes(prev =>
+            prev.map(s =>
+              s.index === data.scene_index
+                ? { ...s, preview_url: data.preview_url }
+                : s
+            )
+          )
+        }
+        if (data.project_status === 'DONE' || data.project_status === 'FAILED') {
+          es.close()
+        }
+      } catch {
+        // ignore malformed events
+      }
+    }
+
+    es.onerror = () => {
+      es.close()
+    }
+
+    return () => {
+      es.close()
+    }
+  }, [project.id])
+
+  useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
 

@@ -37,6 +37,7 @@ export interface Scene {
   voice: string
   on_screen_text: string
   negative_prompt: string
+  preview_url: string
   media_path: string
   media_status: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED'
   media_provider: string
