@@ -164,18 +164,19 @@ const ReviewSceneCard = memo(function ReviewSceneCard({
 
   function handleRegen() {
     startRegen(async () => {
-      onStatusChange(scene.index, 'RUNNING')
-      await fetch(`/api/projects/${projectId}/scenes/${scene.index}/regenerate/`, {
+      const res = await fetch(`/api/projects/${projectId}/scenes/${scene.index}/regenerate/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: mediaPrompt }),
       })
+      if (!res.ok) return
+      onStatusChange(scene.index, 'RUNNING')
       if (mediaPollRef.current) clearInterval(mediaPollRef.current)
       mediaPollRef.current = setInterval(async () => {
         try {
-          const res = await fetch(`/api/projects/${projectId}/scenes/${scene.index}/`)
-          if (!res.ok) return
-          const updated: Scene = await res.json()
+          const r = await fetch(`/api/projects/${projectId}/scenes/${scene.index}/`)
+          if (!r.ok) return
+          const updated: Scene = await r.json()
           onStatusChange(scene.index, updated.media_status)
           if (updated.media_status === 'DONE' || updated.media_status === 'FAILED') {
             clearInterval(mediaPollRef.current!)
@@ -289,11 +290,11 @@ const ReviewSceneCard = memo(function ReviewSceneCard({
                 className={TEXTAREA_CLASS}
               />
               <Button
-                disabled={isRegenerating}
+                disabled={isRegenerating || scene.media_status === 'RUNNING'}
                 onClick={handleRegen}
                 className="bg-transparent border border-[#2a2f3a] text-[#e7e9ee] text-xs px-3 py-2 rounded-lg hover:bg-[#252a35] disabled:opacity-50"
               >
-                {isRegenerating ? 'Queuing…' : 'Regenerate scene'}
+                {isRegenerating || scene.media_status === 'RUNNING' ? 'Generating…' : 'Regenerate scene'}
               </Button>
             </div>
           </div>

@@ -62,6 +62,11 @@ class ValidTransitionsTest(TestCase):
         p.transition_status(Status.FAILED)
         self.assertEqual(p.status, Status.FAILED)
 
+    def test_video_generating_to_failed(self):
+        p = make_project_in(Status.VIDEO_GENERATING)
+        p.transition_status(Status.FAILED)
+        self.assertEqual(p.status, Status.FAILED)
+
     def test_failed_to_generating(self):
         p = make_project_in(Status.FAILED)
         p.transition_status(Status.GENERATING)
@@ -83,7 +88,7 @@ class InvalidTransitionsTest(TestCase):
     def test_done_to_anything(self):
         for s in [Status.DRAFT, Status.PLANNING,
                   Status.REVIEW, Status.GENERATING,
-                  Status.FAILED]:
+                  Status.IMAGE_REVIEW, Status.FAILED]:
             with self.subTest(to=s):
                 self._assert_raises(Status.DONE, s)
 

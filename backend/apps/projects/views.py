@@ -184,7 +184,12 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="regenerate-images")
     def regenerate_images(self, request, pk=None):
-        project = self.get_object()
+        project = self._get_locked_project()
+        if project.status == Status.IMAGE_REVIEW:
+            return Response(
+                {"detail": "Cannot bulk-regenerate images during review; regenerate scenes individually."},
+                status=status.HTTP_409_CONFLICT,
+            )
         scene_indices = list(
             Scene.objects.filter(project=project)
             .values_list("index", flat=True)
@@ -200,7 +205,12 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="regenerate-voiceovers")
     def regenerate_voiceovers(self, request, pk=None):
-        project = self.get_object()
+        project = self._get_locked_project()
+        if project.status == Status.IMAGE_REVIEW:
+            return Response(
+                {"detail": "Cannot regenerate voiceovers during image review."},
+                status=status.HTTP_409_CONFLICT,
+            )
         voice = request.data.get("narrator_voice") or request.data.get("voice")
         if isinstance(voice, str) and voice.strip():
             project.narrator_voice = voice.strip()
@@ -221,7 +231,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
                     {"detail": f"Cannot approve images from {project.status} state."},
                     status=status.HTTP_409_CONFLICT,
                 )
-            not_done = project.scenes.exclude(media_status=MediaStatus.DONE)
+            not_done = project.scenes.select_for_update().exclude(media_status=MediaStatus.DONE)
             if not_done.exists():
                 return Response(
                     {"detail": "All scenes must be DONE before approving."},
