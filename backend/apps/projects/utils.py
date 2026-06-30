@@ -156,6 +156,8 @@ def generate_scene(project, scene, scene_index):
         api_key=secure_key,
         model=llm.model_id,
     )
+    if not data:
+        raise RuntimeError(f"image provider {used.name} returned empty bytes for scene {scene_index}")
 
     if scene.media_path:
         scene.media_path.delete(save=False)
@@ -228,7 +230,7 @@ def animate_scene(project, scene, scene_index):
     deadline = time.time() + _VIDEO_POLL_TIMEOUT
     while time.time() < deadline:
         time.sleep(_VIDEO_POLL_INTERVAL)
-        url = provider.poll(task_id)
+        url = provider.poll(task_id, secure_key)
         if url:
             filename = f"scene_{scene_index:02d}.mp4"
             with tempfile.TemporaryDirectory() as tmpdir:

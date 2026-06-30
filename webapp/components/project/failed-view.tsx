@@ -19,7 +19,7 @@ export default function FailedView({ project, onUpdate }: Props) {
 
   function handleRetry() {
     startRetry(async () => {
-      const res = await fetch(`/api/projects/${project.id}/approve/`, {
+      const res = await fetch(`/api/projects/${project.id}/retry/`, {
         method: 'POST',
       })
       if (res.ok || res.status === 202) {

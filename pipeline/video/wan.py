@@ -13,7 +13,6 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
-import dashscope
 from dashscope import VideoSynthesis
 
 from ..env import configure_dashscope_sdk
@@ -43,8 +42,7 @@ class WanProvider(VideoProvider):
 
     def submit(self, prompt: str, image_path: Path, api_key=None) -> str:
         configure_dashscope_sdk()
-        if api_key:
-            dashscope.api_key = api_key.decrypt()
+        key = api_key.decrypt() if api_key else None
         img_url = "file://" + str(image_path)
         rsp = VideoSynthesis.async_call(
             model=self._model,
@@ -54,14 +52,16 @@ class WanProvider(VideoProvider):
             duration=MAX_DURATION,
             prompt_extend=True,
             watermark=False,
+            api_key=key,
         )
         if rsp.status_code != 200:
             raise RuntimeError(f"wan submit failed [{rsp.code}]: {rsp.message}")
         return rsp.output.task_id
 
-    def poll(self, task_id: str) -> Optional[str]:
+    def poll(self, task_id: str, api_key=None) -> Optional[str]:
         configure_dashscope_sdk()
-        rsp = VideoSynthesis.fetch(task_id)
+        key = api_key.decrypt() if api_key else None
+        rsp = VideoSynthesis.fetch(task_id, api_key=key)
         if rsp.status_code != 200:
             raise RuntimeError(f"wan poll failed [{rsp.code}]: {rsp.message}")
         status = rsp.output.task_status
@@ -79,7 +79,7 @@ class WanProvider(VideoProvider):
         deadline = time.time() + 15 * 60
         while time.time() < deadline:
             time.sleep(15)
-            url = self.poll(task_id)
+            url = self.poll(task_id, api_key)
             if url:
                 self.download(url, out_path)
                 return

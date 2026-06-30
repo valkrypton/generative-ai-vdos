@@ -128,6 +128,10 @@ REST_FRAMEWORK = {
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Reverse proxy (nginx): honour X-Forwarded-* so build_absolute_uri() uses https.
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 STATIC_URL = "static/"
 
 MEDIA_ROOT = BASE_DIR / "media"
