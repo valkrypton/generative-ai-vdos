@@ -6,6 +6,7 @@ from django.test import TestCase
 from apps.accounts.models import UserProfile
 from apps.projects.choices import Status
 from apps.projects.models import Project, Scene
+from apps.projects.tasks import transition_to_image_review as _transition_task
 
 
 def make_user(sub):
@@ -72,6 +73,15 @@ class ProjectActionsTest(TestCase):
         self.assertEqual(self.project.status, Status.VIDEO_GENERATING)
         eager_thread.assert_called_once()
 
+    @patch("apps.projects.views._eager_thread")
+    def test_approve_dispatches_only_image_chain(self, eager_thread):
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self.client.post(f"/api/projects/{self.project.id}/approve/")
+        self.assertEqual(resp.status_code, 202)
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.status, Status.GENERATING)
+        eager_thread.assert_called_once()
+
     def test_download_redirects_to_storage_url(self):
         self.project.status = Status.DONE
         self.project.save(update_fields=["status", "updated_at"])
@@ -120,3 +130,80 @@ class SceneActionsTest(TestCase):
         self.project.refresh_from_db()
         self.assertFalse(self.project.stale)
         eager_thread.assert_not_called()
+
+
+class ApproveImagesTest(TestCase):
+    def setUp(self):
+        self.owner = make_user("owner-approve-images")
+        self.project = Project.objects.create(
+            owner=self.owner,
+            prompt="p",
+            status=Status.IMAGE_REVIEW,
+            shot_plan={"title": "T"},
+        )
+        self.scene = Scene.objects.create(
+            project=self.project,
+            index=0,
+            narration="n",
+            media_prompt="m",
+            media_status="DONE",
+        )
+        session = self.client.session
+        session["cognito_sub"] = self.owner.cognito_sub
+        session.save()
+
+    @patch("apps.projects.views._eager_thread")
+    def test_approve_transitions_to_video_generating_and_dispatches(self, eager_thread):
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self.client.post(f"/api/projects/{self.project.id}/approve-images/")
+        self.assertEqual(resp.status_code, 202)
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.status, Status.VIDEO_GENERATING)
+        eager_thread.assert_called_once()
+
+    @patch("apps.projects.views._eager_thread")
+    def test_approve_blocked_when_scene_not_done(self, eager_thread):
+        self.scene.media_status = "PENDING"
+        self.scene.save(update_fields=["media_status", "updated_at"])
+        resp = self.client.post(f"/api/projects/{self.project.id}/approve-images/")
+        self.assertEqual(resp.status_code, 409)
+        eager_thread.assert_not_called()
+
+    @patch("apps.projects.views._eager_thread")
+    def test_approve_blocked_when_scene_failed(self, eager_thread):
+        self.scene.media_status = "FAILED"
+        self.scene.save(update_fields=["media_status", "updated_at"])
+        resp = self.client.post(f"/api/projects/{self.project.id}/approve-images/")
+        self.assertEqual(resp.status_code, 409)
+        eager_thread.assert_not_called()
+
+    def test_approve_wrong_status_returns_409(self):
+        Project.objects.filter(pk=self.project.pk).update(status=Status.REVIEW)
+        resp = self.client.post(f"/api/projects/{self.project.id}/approve-images/")
+        self.assertEqual(resp.status_code, 409)
+
+    def test_approve_unauthenticated_returns_403(self):
+        from django.test import Client
+        anon = Client()
+        resp = anon.post(f"/api/projects/{self.project.id}/approve-images/")
+        self.assertIn(resp.status_code, [401, 403])
+
+
+class TransitionToImageReviewTaskTest(TestCase):
+    def setUp(self):
+        self.owner = make_user("owner-transition")
+        self.project = Project.objects.create(
+            owner=self.owner, prompt="p", status=Status.GENERATING
+        )
+
+    def test_transitions_generating_project_to_image_review(self):
+        _transition_task(str(self.project.id))
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.status, Status.IMAGE_REVIEW)
+
+    def test_no_op_when_project_is_failed(self):
+        Project.objects.filter(pk=self.project.pk).update(status=Status.FAILED)
+        self.project.refresh_from_db()
+        _transition_task(str(self.project.id))
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.status, Status.FAILED)

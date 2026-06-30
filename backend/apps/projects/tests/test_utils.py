@@ -22,5 +22,5 @@ class GetWorkDirTest(TestCase):
         project = _make_project()
         result = get_work_dir(project)
 
-        expected = Path(settings.MEDIA_ROOT) / str(project.owner_id) / str(project.id)
+        expected = Path(settings.BASE_DIR).parent / "workdirs" / str(project.owner_id) / str(project.id)
         self.assertEqual(result, expected)

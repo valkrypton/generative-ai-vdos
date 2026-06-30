@@ -4,7 +4,7 @@ from unittest.mock import patch
 from django.test import TestCase
 
 from apps.projects.choices import MediaStatus, Status
-from apps.projects.models import Scene
+from apps.projects.models import Project, Scene
 from apps.projects.orchestration import run_assembly, run_images, run_voice
 from apps.projects.tests.helpers import make_generating_project
 
@@ -90,6 +90,8 @@ class RunAssemblyTest(TestCase):
         mock_materialize.return_value = (work_dir, plan)
         mock_assemble.return_value = final
         project = make_generating_project()
+        Project.objects.filter(pk=project.pk).update(status=Status.VIDEO_GENERATING)
+        project.refresh_from_db()
 
         run_assembly(project.id)
 
@@ -99,6 +101,8 @@ class RunAssemblyTest(TestCase):
     @patch("apps.projects.tasks.materialize_work_dir", side_effect=RuntimeError("boom"))
     def test_assembly_failure_marks_project_failed(self, mock_materialize):
         project = make_generating_project()
+        Project.objects.filter(pk=project.pk).update(status=Status.VIDEO_GENERATING)
+        project.refresh_from_db()
 
         run_assembly(project.id)
 

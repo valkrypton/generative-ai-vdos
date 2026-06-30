@@ -289,6 +289,18 @@ def run_assemble_stage(self, project_id):
 
 
 @shared_task
+def transition_to_image_review(project_id):
+    project = Project.objects.get(id=project_id)
+    if project.status == Status.GENERATING:
+        project.transition_status(Status.IMAGE_REVIEW)
+        publish_event(
+            project_id, Stage.IMAGES, Level.INFO,
+            "Images ready — review and approve to continue",
+        )
+    return {"project_id": project_id}
+
+
+@shared_task
 def mark_pipeline_failed(task_id, project_id):
     """Error callback for chord/chain — marks the project as FAILED."""
     logger.error("Pipeline task %s failed for project %s", task_id, project_id)

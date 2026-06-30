@@ -2,6 +2,7 @@ export type ProjectStatus =
   | 'DRAFT'
   | 'PLANNING'
   | 'REVIEW'
+  | 'IMAGE_REVIEW'
   | 'GENERATING'
   | 'VIDEO_GENERATING'
   | 'DONE'

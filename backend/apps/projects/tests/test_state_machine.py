@@ -42,10 +42,20 @@ class ValidTransitionsTest(TestCase):
         p.transition_status(Status.PLANNING)
         self.assertEqual(p.status, Status.PLANNING)
 
-    def test_generating_to_done(self):
+    def test_generating_to_image_review(self):
         p = make_project_in(Status.GENERATING)
-        p.transition_status(Status.DONE)
-        self.assertEqual(p.status, Status.DONE)
+        p.transition_status(Status.IMAGE_REVIEW)
+        self.assertEqual(p.status, Status.IMAGE_REVIEW)
+
+    def test_image_review_to_video_generating(self):
+        p = make_project_in(Status.IMAGE_REVIEW)
+        p.transition_status(Status.VIDEO_GENERATING)
+        self.assertEqual(p.status, Status.VIDEO_GENERATING)
+
+    def test_image_review_to_failed(self):
+        p = make_project_in(Status.IMAGE_REVIEW)
+        p.transition_status(Status.FAILED)
+        self.assertEqual(p.status, Status.FAILED)
 
     def test_generating_to_failed(self):
         p = make_project_in(Status.GENERATING)
@@ -63,6 +73,12 @@ class InvalidTransitionsTest(TestCase):
         p = make_project_in(from_status)
         with self.assertRaises(ValueError):
             p.transition_status(to_status)
+
+    def test_generating_to_done_is_now_invalid(self):
+        self._assert_raises(Status.GENERATING, Status.DONE)
+
+    def test_image_review_to_done_is_invalid(self):
+        self._assert_raises(Status.IMAGE_REVIEW, Status.DONE)
 
     def test_done_to_anything(self):
         for s in [Status.DRAFT, Status.PLANNING,
