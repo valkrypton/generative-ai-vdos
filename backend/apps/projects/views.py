@@ -330,25 +330,26 @@ def _dispatch_generate_stage(project_id: str) -> None:
         .values_list("index", flat=True)
     )
 
-    rest = chain(
-        run_video_stage.si(project_id),
-        run_voice_stage.si(project_id),
-        run_assemble_stage.si(project_id),
-    )
+    error_sig = mark_pipeline_failed.s(project_id=str(project_id))
 
     if scene_indices:
+        # Stop at the image-review gate — video/voice/assemble only run after
+        # the user calls approve-images (see _dispatch_voice_assembly). Auto-chaining
+        # them here used to race animate_scene() against the IMAGE_REVIEW gate,
+        # flipping Scene.media_status back to RUNNING and wedging approve-images
+        # in a permanent 409.
         canvas = chord(
-            group(run_image_stage.si(project_id, idx) for idx in scene_indices),
-            chain(transition_to_image_review.si(project_id), rest),
+            group(run_image_stage.si(project_id, idx).on_error(error_sig) for idx in scene_indices),
+            transition_to_image_review.si(project_id).on_error(error_sig),
         )
     else:
-        canvas = rest
+        canvas = chain(
+            run_video_stage.si(project_id),
+            run_voice_stage.si(project_id),
+            run_assemble_stage.si(project_id),
+        ).on_error(error_sig)
 
-    _eager_thread(
-        lambda: canvas.apply_async(
-            link_error=mark_pipeline_failed.s(project_id=str(project_id)),
-        )
-    )
+    _eager_thread(lambda: canvas.apply_async())
 
 def _dispatch_voice_assembly(project_id: str) -> None:
     _eager_thread(chain(
