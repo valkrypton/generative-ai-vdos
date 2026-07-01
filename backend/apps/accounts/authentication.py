@@ -8,6 +8,19 @@ class CognitoSessionAuthentication(BaseAuthentication):
     Returns None (anonymous) when there is no session sub or no matching
     profile — combined with IsAuthenticated this yields a 401/403 rather than
     silently leaking data.
+
+    CSRF posture (deliberate): unlike DRF's SessionAuthentication, this
+    authenticator performs **no** CSRF token check, and Django's
+    CsrfViewMiddleware is intentionally absent from MIDDLEWARE. Cross-site
+    write protection relies solely on ``SESSION_COOKIE_SAMESITE = "Lax"``,
+    which prevents the session cookie from riding along on cross-site
+    POST/PATCH/DELETE requests. All first-party mutations originate from the
+    Next.js same-origin rewrite proxy, so they are unaffected. If the session
+    cookie is ever sent cross-origin, add explicit CSRF token enforcement here.
+
+    Bearer-token clients are *not* a CSRF case: ``Authorization`` headers are
+    never auto-attached by the browser, so CSRF is moot for them. Secure those
+    flows with CORS, XSS hardening, and safe token storage instead.
     """
 
     def authenticate(self, request):

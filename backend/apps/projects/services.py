@@ -94,7 +94,18 @@ def _eager_thread(fn, *args) -> None:
     from django.conf import settings
     if getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False):
         import threading
-        threading.Thread(target=fn, args=args, daemon=True).start()
+        from django.db import close_old_connections
+
+        def _run():
+            try:
+                fn(*args)
+            finally:
+                # Daemon threads get their own thread-local DB connection that
+                # Django never closes for us; release it so the connection isn't
+                # held (and SQLite isn't locked) until interpreter exit.
+                close_old_connections()
+
+        threading.Thread(target=_run, daemon=True).start()
     else:
         fn(*args)
 

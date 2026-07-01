@@ -88,16 +88,23 @@ class ProjectViewSet(viewsets.ModelViewSet):
         )
 
     def _get_locked_project(self):
-        return self.get_queryset().select_for_update().get(pk=self.kwargs["pk"])
+        try:
+            return self.get_queryset().select_for_update().get(pk=self.kwargs["pk"])
+        except Project.DoesNotExist:
+            raise Http404 from None
 
     def partial_update(self, request, *args, **kwargs):
-        project = self.get_object()
-        if project.status != Status.REVIEW:
-            return Response(
-                {"detail": "Can only edit plan in REVIEW state."},
-                status=status.HTTP_409_CONFLICT,
-            )
-        return super().partial_update(request, *args, **kwargs)
+        with transaction.atomic():
+            project = self._get_locked_project()
+            if project.status != Status.REVIEW:
+                return Response(
+                    {"detail": "Can only edit plan in REVIEW state."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            serializer = self.get_serializer(project, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
+        return Response(serializer.data)
 
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
@@ -242,7 +249,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
         )
         _eager_thread(group(
             run_image_stage.si(str(project.id), idx) for idx in scene_indices
-        ).delay())
+        ).delay)
         return Response({"queued": len(scene_indices)}, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=True, methods=["post"], url_path="regenerate-voiceovers")

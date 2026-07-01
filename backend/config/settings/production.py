@@ -9,6 +9,12 @@ ALLOWED_HOSTS = env_csv("DJANGO_ALLOWED_HOSTS")
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_SSL_REDIRECT = not env_bool("DISABLE_SSL_REDIRECT", default=False)
+# TLS terminates at the load balancer / CDN and forwards plain HTTP, so trust the
+# X-Forwarded-Proto header to know the original request was HTTPS. Without this,
+# SECURE_SSL_REDIRECT would 301-loop forever and secure cookies/HSTS never apply.
+# Only safe because the proxy is trusted to set this header (clients can't reach
+# the app server directly to spoof it).
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True

@@ -170,6 +170,10 @@ class JobLog(TimestampMixin):
 
     class Meta:
         ordering = ["created_at"]
+        indexes = [
+            # Backs the /logs/ polling query: filter(project=…, id__gt=after).order_by("id")
+            models.Index(fields=["project", "id"], name="joblog_project_id_idx"),
+        ]
 
     def __str__(self):
         return f"[{self.stage}/{self.level}] {self.message[:80]}"
