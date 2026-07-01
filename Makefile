@@ -61,8 +61,9 @@ prod:
 	@command -v redis-cli >/dev/null 2>&1 || (echo "ERROR: redis not found - brew install redis" && exit 1)
 	@redis-cli ping >/dev/null 2>&1 || (echo "ERROR: Redis not running - brew services start redis" && exit 1)
 	$(MANAGE) collectstatic --no-input
-	@echo "Starting Celery worker..."
-	PYTHONPATH=backend $(PY) -m celery -A config worker -l info --concurrency 4 &
+	@echo "Starting Celery workers..."
+	PYTHONPATH=backend $(PY) -m celery -A config worker -l info -Q celery -n worker@%h --concurrency 4 &
+	PYTHONPATH=backend $(PY) -m celery -A config worker -l info -Q images -n images@%h --concurrency 2 &
 	@echo "Starting Django via gunicorn on :8000..."
 	$(VENV)/bin/gunicorn config.wsgi:application --bind 0.0.0.0:8000 --bind [::]:8000 --worker-class gthread --workers 2 --threads 8 --timeout 120 --chdir backend
 
