@@ -25,7 +25,7 @@ fi
 
 echo "==> Python deps"
 cd "$APP_DIR"
-uv sync --extra webapp
+uv sync
 uv pip install gunicorn
 
 echo "==> Frontend deps + build"
@@ -42,9 +42,11 @@ echo "==> Systemd services"
 chmod +x "$APP_DIR/scripts/deploy/start-backend.sh"
 sudo cp "$APP_DIR/scripts/deploy/backend.service" /etc/systemd/system/generative-ai-vdos-backend.service
 sudo cp "$APP_DIR/scripts/deploy/frontend.service" /etc/systemd/system/generative-ai-vdos-frontend.service
+sudo cp "$APP_DIR/scripts/deploy/celery-worker.service" /etc/systemd/system/generative-ai-vdos-celery-worker.service
+sudo cp "$APP_DIR/scripts/deploy/celery-images.service" /etc/systemd/system/generative-ai-vdos-celery-images.service
 sudo systemctl daemon-reload
-sudo systemctl enable generative-ai-vdos-backend generative-ai-vdos-frontend
-sudo systemctl restart generative-ai-vdos-backend generative-ai-vdos-frontend
+sudo systemctl enable generative-ai-vdos-backend generative-ai-vdos-frontend generative-ai-vdos-celery-worker generative-ai-vdos-celery-images
+sudo systemctl restart generative-ai-vdos-celery-worker generative-ai-vdos-celery-images generative-ai-vdos-backend generative-ai-vdos-frontend
 
 echo "==> Nginx"
 sudo cp "$APP_DIR/scripts/deploy/nginx.conf" /etc/nginx/sites-available/generative-ai-vdos
