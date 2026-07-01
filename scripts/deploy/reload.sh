@@ -23,4 +23,4 @@ echo "==> Restarting services"
 sudo systemctl restart generative-ai-vdos-celery-worker generative-ai-vdos-celery-images generative-ai-vdos-backend generative-ai-vdos-frontend
 
 echo "==> Done — service status:"
-sudo systemctl --no-pager status generative-ai-vdos-backend generative-ai-vdos-frontend generative-ai-vdos-celery-worker generative-ai-vdos-celery-images
+sudo systemctl --no-pager status generative-ai-vdos-backend generative-ai-vdos-frontend generative-ai-vdos-celery-worker generative-ai-vdos-celery-images || true
