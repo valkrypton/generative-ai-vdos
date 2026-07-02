@@ -1,15 +1,20 @@
+import os
 from pathlib import Path
 from unittest.mock import patch
 
+from django.conf import settings
 from django.test import TestCase
 
-from apps.projects.choices import MediaStatus, Status
-from apps.projects.models import Project, Scene
+from apps.accounts.models import UserAPIKey
+from apps.core.models import Provider
+from apps.projects.choices import Capability, MediaStatus, Status
+from apps.projects.models import LLMModel, Project, Scene
 from apps.projects.orchestration import run_assembly, run_images, run_voice
 from apps.projects.tests.helpers import make_generating_project
+from pipeline.secure import get_fernet
 
 
-def _mock_generate_scene(project, scene, scene_index):
+def _mock_generate_scene(project, scene, scene_index, secure_key, llm):
     """Simulate what generate_scene does on success: mark scene DONE."""
     scene.media_status = MediaStatus.DONE
     scene.media_path = f"scenes/test/scene_{scene_index:02d}.png"
@@ -18,10 +23,34 @@ def _mock_generate_scene(project, scene, scene_index):
     return scene.media_path
 
 
+def _make_image_model():
+    provider = Provider.objects.create(code="dashscope", name="DashScope")
+    return LLMModel.objects.create(
+        provider=provider, capability=Capability.IMAGE,
+        model_id="qwen-image-2.0", display_name="Qwen Image",
+        is_free=True, is_default=True,
+    )
+
+
 class RunImagesTest(TestCase):
+    def setUp(self):
+        os.environ["FIELD_ENCRYPTION_KEY"] = settings.FIELD_ENCRYPTION_KEY
+        get_fernet.cache_clear()
+
+    def tearDown(self):
+        get_fernet.cache_clear()
+
+    def _make_project_with_key(self, scene_count):
+        im = _make_image_model()
+        project = make_generating_project(scene_count=scene_count, image_model=im)
+        key = UserAPIKey(owner=project.owner, provider=im.provider)
+        key.set_api_key("sk-test-key-12345678")
+        key.save()
+        return project
+
     @patch("apps.projects.tasks.generate_scene", side_effect=_mock_generate_scene)
     def test_images_marks_scenes_done(self, mock_gen):
-        project = make_generating_project(scene_count=2)
+        project = self._make_project_with_key(scene_count=2)
 
         run_images(project.id, 2)
 
@@ -33,7 +62,7 @@ class RunImagesTest(TestCase):
         # Non-transient scene failures no longer abort the chain — the task returns
         # instead of raising so transition_to_image_review still fires, giving the
         # user a chance to regenerate the failed scene.
-        project = make_generating_project(scene_count=1)
+        project = self._make_project_with_key(scene_count=1)
 
         run_images(project.id, 1)
 
@@ -44,7 +73,7 @@ class RunImagesTest(TestCase):
 
     @patch("apps.projects.tasks.generate_scene", side_effect=_mock_generate_scene)
     def test_images_does_not_trigger_voice(self, mock_gen):
-        project = make_generating_project(scene_count=1)
+        project = self._make_project_with_key(scene_count=1)
 
         run_images(project.id, 1)
 

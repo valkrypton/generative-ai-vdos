@@ -41,8 +41,8 @@ def make_shot_plan(scene_count=2):
     }
 
 
-def make_generating_project(scene_count=2):
-    project = make_project(shot_plan=make_shot_plan(scene_count))
+def make_generating_project(scene_count=2, **kwargs):
+    project = make_project(shot_plan=make_shot_plan(scene_count), **kwargs)
     project.transition_status(Status.PLANNING)
     project.transition_status(Status.REVIEW)
     project.transition_status(Status.GENERATING)

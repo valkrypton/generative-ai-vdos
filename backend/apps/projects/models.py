@@ -28,14 +28,28 @@ class LLMModel(TimestampMixin):
     is_free      = models.BooleanField(default=False)
     is_default   = models.BooleanField(default=False)
     is_active    = models.BooleanField(default=True, db_index=True)
+    owner        = models.ForeignKey(
+        UserProfile, on_delete=models.CASCADE,
+        null=True, blank=True, related_name="custom_models",
+    )
 
     class Meta:
         verbose_name = "LLM Model"
         verbose_name_plural = "LLM Models"
         constraints = [
+            # Plain multi-column UniqueConstraint doesn't work here: SQL treats every
+            # NULL as distinct, so two admin rows (owner=NULL) with the same
+            # (provider, capability, model_id) would never collide. Two partial
+            # constraints instead — one scoped to global rows, one to owned rows.
             models.UniqueConstraint(
                 fields=["provider", "capability", "model_id"],
-                name="unique_provider_capability_model",
+                condition=models.Q(owner__isnull=True),
+                name="unique_global_provider_capability_model",
+            ),
+            models.UniqueConstraint(
+                fields=["provider", "capability", "model_id", "owner"],
+                condition=models.Q(owner__isnull=False),
+                name="unique_owned_provider_capability_model",
             ),
         ]
         ordering = ["-is_default", "-is_free", "display_name"]

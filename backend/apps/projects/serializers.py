@@ -2,6 +2,7 @@ import os
 
 from rest_framework import serializers
 
+from apps.core.models import Provider
 from apps.core.moderation.drf import ModeratedFieldsMixin
 from apps.storage import storage_provider
 from apps.projects.models import JobLog, LLMModel, Project, Scene
@@ -80,15 +81,27 @@ class JobLogSerializer(serializers.ModelSerializer):
 
 
 class LLMModelSerializer(serializers.ModelSerializer):
-    provider = serializers.CharField(source="provider.code", read_only=True)
+    provider = serializers.PrimaryKeyRelatedField(
+        queryset=Provider.objects.filter(is_active=True),
+    )
+    owned = serializers.SerializerMethodField()
 
     class Meta:
         model = LLMModel
         fields = [
             "id", "model_id", "display_name", "provider",
-            "capability", "is_free", "is_default",
+            "capability", "is_free", "is_default", "owned",
         ]
-        read_only_fields = fields
+        read_only_fields = ["id", "is_free", "is_default", "owned"]
+
+    def get_owned(self, obj) -> bool:
+        request = self.context.get("request")
+        return bool(request and request.user.is_authenticated and obj.owner_id == request.user.id)
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        rep["provider"] = instance.provider.code
+        return rep
 
 
 class ProjectSerializer(ModeratedFieldsMixin, serializers.ModelSerializer):

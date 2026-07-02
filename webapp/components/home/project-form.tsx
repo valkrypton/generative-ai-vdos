@@ -2,21 +2,14 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import type { LLMModel } from './create-video-section'
 
-const IMAGE_MODELS = [
-  { value: 'qwen-image-2.0', label: 'Qwen Image 2.0 — free' },
-  { value: 'flux-schnell',   label: 'Flux Schnell — free' },
-  { value: 'pexels',         label: 'Pexels Stock — free' },
-  { value: 'gpt-image-1',    label: 'GPT Image 1 — paid' },
-  { value: 'qwen-image-max-2025-12-30',     label: 'Qwen Image -- Free'}
-]
-
-const VIDEO_MODELS = [
-  { value: 'wan2.1-i2v-plus',  label: 'Wan2.1 Plus I2V — paid' },
-  { value: 'wan2.2-i2v-flash', label: 'Wan Flash — paid' },
-  { value: 'wan2.1-i2v-turbo', label: 'Wan Turbo — paid' },
-]
+interface ProjectFormProps {
+  imageModels: LLMModel[]
+  videoModels: LLMModel[]
+}
 
 const VOICES = [
   { value: 'en-US-AndrewNeural', label: 'Andrew (US Male)' },
@@ -35,12 +28,13 @@ const MUSIC_MOODS = [
 const SELECT_CLASS =
   'w-full bg-[#1e222b] text-[#e7e9ee] border border-[#2a2f3a] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#6ea8fe]'
 
-export default function ProjectForm() {
+export default function ProjectForm({ imageModels, videoModels }: ProjectFormProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [prompt, setPrompt] = useState('')
-  const [imageModel, setImageModel] = useState('qwen-image-2.0')
-  const [videModel, setVideModel] = useState('wan2.2-i2v-flash')
+
+  const [imageModel, setImageModel] = useState(imageModels[0]?.model_id ?? '')
+  const [videModel, setVideModel] = useState(videoModels[0]?.model_id ?? '')
   const [voice, setVoice] = useState('en-US-AndrewNeural')
   const [music, setMusic] = useState('calm')
   const [animate, setAnimate] = useState(false)
@@ -116,8 +110,10 @@ export default function ProjectForm() {
             onChange={e => setImageModel(e.target.value)}
             className={SELECT_CLASS}
           >
-            {IMAGE_MODELS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            {imageModels.map(opt => (
+              <option key={opt.id} value={opt.model_id}>
+                {opt.display_name}{opt.is_free ? ' — free' : ''}
+              </option>
             ))}
           </select>
         </div>
@@ -128,8 +124,10 @@ export default function ProjectForm() {
             onChange={e => setVideModel(e.target.value)}
             className={SELECT_CLASS}
           >
-            {VIDEO_MODELS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            {videoModels.map(opt => (
+              <option key={opt.id} value={opt.model_id}>
+                {opt.display_name}{opt.is_free ? ' — free' : ''}
+              </option>
             ))}
           </select>
         </div>
@@ -188,7 +186,7 @@ export default function ProjectForm() {
       </div>
 
       <p className="text-[11px] text-[#4a5568]">
-        Defaults come from <code className="text-[#6ea8fe]">.env</code> — overrides here apply to this project only.
+        Generation needs an API key for the selected model&apos;s provider — add one in <Link href="/settings" className="text-[#6ea8fe] hover:underline">Settings</Link>.
       </p>
     </form>
   )
