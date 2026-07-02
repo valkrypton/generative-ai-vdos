@@ -223,7 +223,7 @@ def run_video_stage(self, project_id, scene_index=None):
         publish_event(project_id, Stage.VIDEO, Level.ERROR,
                       f"Animating scenes failed. cause: {exc}")
         fail_project(project, project_id, Stage.VIDEO,
-                     RuntimeError("All animated scene submissions failed"))
+                     RuntimeError(f"All animated scene submissions failed: {exc}"))
         return {"project_id": str(project_id)}
 
     for scene in animated:

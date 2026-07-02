@@ -1,7 +1,7 @@
 import json
 
 from celery import chain, chord, group
-from django.db import models, transaction
+from django.db import IntegrityError, models, transaction
 from django.http import Http404
 from django.http import StreamingHttpResponse
 from django.shortcuts import redirect
@@ -418,7 +418,16 @@ class LLMModelViewSet(
         provider = serializer.validated_data["provider"]
         if not UserAPIKey.objects.filter(owner=self.request.user, provider=provider).exists():
             raise ValidationError({"provider": "Add an API key for this provider first."})
-        serializer.save(owner=self.request.user, is_free=False, is_default=False, is_active=True)
+        # `owner` isn't a serializer field, so DRF can't validate the DB's
+        # unique_owned_provider_capability_model constraint up front — a
+        # duplicate model_id for this user hits IntegrityError on save.
+        # Nested atomic() gives it a savepoint, so the failed insert can't
+        # poison an enclosing transaction.
+        try:
+            with transaction.atomic():
+                serializer.save(owner=self.request.user, is_free=False, is_default=False, is_active=True)
+        except IntegrityError:
+            raise ValidationError({"model_id": "You already have a model with this ID for this provider."})
 
     def perform_destroy(self, instance):
         if instance.owner_id != self.request.user.id:

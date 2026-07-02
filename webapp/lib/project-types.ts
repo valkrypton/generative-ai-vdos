@@ -66,6 +66,17 @@ export interface Project {
   updated_at: string
 }
 
+export interface LLMModel {
+  id: number
+  model_id: string
+  display_name: string
+  provider: string
+  capability: string
+  is_free: boolean
+  is_default: boolean
+  owned: boolean
+}
+
 export interface SSEEvent {
   type: string
   stage: string

@@ -28,7 +28,7 @@
 
 **Interfaces:**
 - Consumes: nothing new.
-- Produces: `LLMModel.owner` (nullable FK to `apps.accounts.models.UserProfile`, `related_name="custom_models"`). Global/admin rows have `owner=None`; a user's own rows have `owner=<that user>`. Unique constraint is now `(provider, capability, model_id, owner)`. Task 2 and Task 3 both read `llm.owner_id`.
+- Produces: `LLMModel.owner` (nullable FK to `apps.accounts.models.UserProfile`, `related_name="custom_llm_models"`). Global/admin rows have `owner=None`; a user's own rows have `owner=<that user>`. Uniqueness is enforced by two partial constraints — `(provider, capability, model_id)` where `owner IS NULL`, and `(provider, capability, model_id, owner)` where `owner IS NOT NULL` — not a single constraint including `owner`, since SQL treats every `NULL` as distinct and wouldn't stop two global rows from colliding. Task 2 and Task 3 both read `llm.owner_id`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -97,16 +97,26 @@ class LLMModel(TimestampMixin):
     is_active    = models.BooleanField(default=True, db_index=True)
     owner        = models.ForeignKey(
         UserProfile, on_delete=models.CASCADE,
-        null=True, blank=True, related_name="custom_models",
+        null=True, blank=True, related_name="custom_llm_models",
     )
 
     class Meta:
         verbose_name = "LLM Model"
         verbose_name_plural = "LLM Models"
         constraints = [
+            # A plain multi-column UniqueConstraint doesn't work here: SQL treats
+            # every NULL as distinct, so two admin rows (owner=NULL) with the same
+            # (provider, capability, model_id) would never collide. Two partial
+            # constraints instead — one scoped to global rows, one to owned rows.
+            models.UniqueConstraint(
+                fields=["provider", "capability", "model_id"],
+                condition=models.Q(owner__isnull=True),
+                name="unique_global_provider_capability_model",
+            ),
             models.UniqueConstraint(
                 fields=["provider", "capability", "model_id", "owner"],
-                name="unique_provider_capability_model_owner",
+                condition=models.Q(owner__isnull=False),
+                name="unique_owned_provider_capability_model",
             ),
         ]
         ordering = ["-is_default", "-is_free", "display_name"]
@@ -129,7 +139,9 @@ class LLMModel(TimestampMixin):
 cd backend && python manage.py makemigrations projects
 ```
 
-Expected output names a new file `apps/projects/migrations/0007_llmmodel_owner.py`. Open it and confirm it contains a `RemoveConstraint` for `unique_provider_capability_model`, an `AddField` for `owner`, and an `AddConstraint` for `unique_provider_capability_model_owner`, with `dependencies` including `("accounts", "0002_add_user_api_key")`. If Django named the file differently, rename it to `0007_llmmodel_owner.py` for consistency with the numbering already in the directory (`0006_joblog_project_id_index.py` is the current head).
+Expected output names a new file `apps/projects/migrations/0007_llmmodel_owner.py`. Open it and confirm it contains a `RemoveConstraint` for `unique_provider_capability_model`, an `AddField` for `owner`, and an `AddConstraint` for the two partial constraints described in Step 3 above, with `dependencies` including `("accounts", "0002_add_user_api_key")`. If Django named the file differently, rename it to `0007_llmmodel_owner.py` for consistency with the numbering already in the directory (`0006_joblog_project_id_index.py` is the current head).
+
+> **What actually happened during implementation:** the single-constraint design was tried first (matching an earlier draft of this plan), applied to the local dev DB, and only then caught by the `test_owner_null_still_unique_among_global_rows` test failing. Since the migration had already been applied to a DB with real local data, the fix landed as a second migration, `0008_llmmodel_owner_partial_constraints.py` (`RemoveConstraint` of the old single constraint + `AddConstraint` of the two partial ones), rather than editing the already-applied `0007`. Either a single correct migration (if you catch this before applying `0007`) or the two-migration split (if you don't) is fine — just don't hand-edit a migration that's already been applied to a DB with real data.
 
 - [ ] **Step 5: Apply the migration and run tests to verify they pass**
 

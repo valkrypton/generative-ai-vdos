@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import type { LLMModel } from './create-video-section'
+import type { LLMModel } from '@/lib/project-types'
 
 interface ProjectFormProps {
   imageModels: LLMModel[]

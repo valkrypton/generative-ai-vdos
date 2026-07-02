@@ -127,3 +127,21 @@ class LLMModelViewSetTest(TestCase):
         self._login_as("owner-sub")
         resp = self.client.delete(f"{self.url}{row.id}/")
         self.assertIn(resp.status_code, (403, 404))
+
+    def test_create_duplicate_model_id_returns_400_not_500(self):
+        _key(self.user, self.provider)
+        self._login_as("owner-sub")
+        body = {
+            "provider": self.provider.id, "capability": "image",
+            "model_id": "dup-1", "display_name": "One",
+        }
+        first = self.client.post(self.url, body, content_type="application/json")
+        self.assertEqual(first.status_code, 201)
+
+        second = self.client.post(self.url, body, content_type="application/json")
+        self.assertEqual(second.status_code, 400)
+        self.assertIn("model_id", second.json())
+        self.assertEqual(LLMModel.objects.filter(model_id="dup-1", owner=self.user).count(), 1)
+
+        # The failed insert's savepoint rollback shouldn't break subsequent queries.
+        self.assertEqual(LLMModel.objects.count(), 1)

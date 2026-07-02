@@ -30,7 +30,7 @@ class LLMModel(TimestampMixin):
     is_active    = models.BooleanField(default=True, db_index=True)
     owner        = models.ForeignKey(
         UserProfile, on_delete=models.CASCADE,
-        null=True, blank=True, related_name="custom_models",
+        null=True, blank=True, related_name="custom_llm_models",
     )
 
     class Meta:

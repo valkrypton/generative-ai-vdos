@@ -29,18 +29,21 @@ No changes — `GET /api/models/?capability=image|video` (`apps/projects/views.p
 is_default}` for `is_active=True` rows.
 
 ### Frontend
-- New Server Component fetch in `app/(home)/home/page.tsx` (same pattern as
-  `app/(home)/settings/page.tsx`'s `serverFetch`): fetch `/api/models/?capability=image`,
-  `/api/models/?capability=video`, and `/api/auth/keys/`, pass down as props into `<ProjectForm>`.
+- New Server Component fetch in `create-video-section.tsx` (same pattern as
+  `app/(home)/settings/page.tsx`'s `serverFetch`): fetch `/api/models/?capability=image` and
+  `/api/models/?capability=video`, pass down as props into `<ProjectForm>`.
 - `project-form.tsx`: delete `IMAGE_MODELS`/`VIDEO_MODELS` constants. Accept `imageModels`,
-  `videoModels`, `userKeys` (list of `{provider: number}`) as props.
-- Build a `Set<providerCode>` of providers the user has a key for. Filter each model list to
-  `userProviderCodes.has(model.provider)`. This applies uniformly regardless of `is_free` — with
-  Part 3, DashScope's free quota still requires the user's own DashScope key, not the app's.
-- If a capability has zero selectable models (user has no keys yet), show inline text: "Add an API
-  key in Settings to unlock image/video models" linking to `/settings`, and disable submission for
-  that capability's paid path — mirrors the existing empty-state pattern in `ApiKeysPanel`.
+  `videoModels` as props and render them directly — no client-side filtering by configured keys.
 - `VOICES`/`MUSIC_MOODS` arrays stay as-is.
+
+> **Revised after initial implementation:** the first version of this section filtered the
+> dropdowns to only providers the user had a key for (via a `userKeys` prop), with an empty-state
+> CTA when none were configured. That was changed on explicit direction: the picker should always
+> show the full seeded + custom catalog regardless of configured keys — Part 3's
+> `MissingAPIKeyError` is the actual enforcement point, and it already surfaces through
+> `FailedView`'s error banner when a project fails for lack of a key. The `userKeys`/`providers`
+> props and the empty-state gating were removed from `ProjectForm`/`CreateVideoSection` as a
+> result.
 
 ---
 
@@ -48,7 +51,7 @@ is_default}` for `is_active=True` rows.
 
 ### Backend
 - **Migration on `LLMModel`:** add `owner = models.ForeignKey(UserProfile, on_delete=models.CASCADE,
-  null=True, blank=True, related_name="custom_models")`. Replace the existing
+  null=True, blank=True, related_name="custom_llm_models")`. Replace the existing
   `unique_provider_capability_model` constraint with one that includes `owner`
   (`fields=["provider", "capability", "model_id", "owner"]`) — Postgres treats `NULL` as distinct per
   row, so admin rows (`owner=NULL`) stay unique among themselves and each user's rows are unique to

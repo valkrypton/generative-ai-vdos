@@ -3,17 +3,7 @@
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import type { ApiKey, Provider } from './api-keys'
-
-export interface LLMModel {
-  id: number
-  model_id: string
-  display_name: string
-  provider: string
-  capability: string
-  is_free: boolean
-  is_default: boolean
-  owned: boolean
-}
+import type { LLMModel } from '@/lib/project-types'
 
 interface Props {
   initialModels: LLMModel[]
@@ -36,6 +26,7 @@ const CAPABILITIES = [
 export function CustomModelsPanel({ initialModels, keys, providers }: Props) {
   const [models, setModels] = useState<LLMModel[]>(initialModels.filter(m => m.owned))
   const [adding, setAdding] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
   const [error, setError] = useState('')
   const [form, setForm] = useState({ provider: '', capability: 'image', model_id: '', display_name: '' })
@@ -49,25 +40,31 @@ export function CustomModelsPanel({ initialModels, keys, providers }: Props) {
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
+    if (submitting) return
     setError('')
-    const res = await fetch('/api/models/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider: Number(form.provider),
-        capability: form.capability,
-        model_id: form.model_id,
-        display_name: form.display_name,
-      }),
-    })
-    if (!res.ok) {
-      setError('Something went wrong. Check the fields and try again.')
-      return
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/models/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: Number(form.provider),
+          capability: form.capability,
+          model_id: form.model_id,
+          display_name: form.display_name,
+        }),
+      })
+      if (!res.ok) {
+        setError('Something went wrong. Check the fields and try again.')
+        return
+      }
+      const created: LLMModel = await res.json()
+      setModels(prev => [...prev, created])
+      setAdding(false)
+      setForm({ provider: '', capability: 'image', model_id: '', display_name: '' })
+    } finally {
+      setSubmitting(false)
     }
-    const created: LLMModel = await res.json()
-    setModels(prev => [...prev, created])
-    setAdding(false)
-    setForm({ provider: '', capability: 'image', model_id: '', display_name: '' })
   }
 
   async function handleDelete(id: number) {
@@ -132,7 +129,9 @@ export function CustomModelsPanel({ initialModels, keys, providers }: Props) {
             onChange={e => setForm(f => ({ ...f, display_name: e.target.value }))} className={inputCls} />
           {error && <p className="text-red-400 text-xs">{error}</p>}
           <div className="flex gap-2">
-            <Button type="submit" size="sm">Add model</Button>
+            <Button type="submit" size="sm" disabled={submitting}>
+              {submitting ? 'Adding…' : 'Add model'}
+            </Button>
             <Button type="button" variant="outline" size="sm" onClick={() => { setAdding(false); setError('') }} className={ghostBtn}>Cancel</Button>
           </div>
         </form>
