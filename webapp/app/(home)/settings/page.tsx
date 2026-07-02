@@ -1,23 +1,13 @@
-import { cookies } from 'next/headers'
-import { ApiKeysPanel, type ApiKey, type Provider } from '@/components/settings/api-keys'
-
-const DJANGO_ORIGIN = (process.env.DJANGO_ORIGIN ?? 'http://localhost:8000').replace(/\/$/, '')
-
-async function serverFetch<T>(path: string): Promise<T> {
-  const cookieStore = await cookies()
-  const session = cookieStore.get('sessionid')
-  const res = await fetch(`${DJANGO_ORIGIN}${path}`, {
-    headers: session ? { Cookie: `sessionid=${session.value}` } : {},
-    cache: 'no-store',
-  })
-  if (!res.ok) throw new Error(`${path} responded ${res.status}`)
-  return res.json() as Promise<T>
-}
+import type { ApiKey, Provider } from '@/components/settings/api-keys'
+import { SettingsPanels } from '@/components/settings/settings-panels'
+import { serverFetch } from '@/lib/server-fetch'
+import type { LLMModel } from '@/lib/project-types'
 
 export default async function SettingsPage() {
-  const [initialKeys, providers] = await Promise.all([
+  const [initialKeys, providers, initialModels] = await Promise.all([
     serverFetch<ApiKey[]>('/api/auth/keys/'),
     serverFetch<Provider[]>('/api/core/providers/'),
+    serverFetch<LLMModel[]>('/api/models/'),
   ])
 
   return (
@@ -26,12 +16,7 @@ export default async function SettingsPage() {
         <h1 className="text-xl font-semibold text-[#e7e9ee]">Settings</h1>
         <p className="text-sm text-[#5a6275] mt-1">Manage your provider API keys and account preferences.</p>
       </div>
-      <section>
-        <h2 className="text-xs font-medium text-[#9aa3b2] uppercase tracking-widest mb-3">
-          API Keys
-        </h2>
-        <ApiKeysPanel initialKeys={initialKeys} providers={providers} />
-      </section>
+      <SettingsPanels initialKeys={initialKeys} providers={providers} initialModels={initialModels} />
     </div>
   )
 }

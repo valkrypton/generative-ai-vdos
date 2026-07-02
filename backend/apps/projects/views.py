@@ -1,16 +1,18 @@
 import json
 
 from celery import chain, chord, group
-from django.db import transaction
+from django.db import IntegrityError, models, transaction
 from django.http import Http404
 from django.http import StreamingHttpResponse
 from django.shortcuts import redirect
-from rest_framework import viewsets, status
+from rest_framework import mixins, viewsets, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.renderers import BaseRenderer
 from rest_framework.response import Response
 
+from apps.accounts.models import UserAPIKey
 from apps.core.moderation.drf import blocked_response
 
 from .models import Project, Scene, JobLog
@@ -393,16 +395,44 @@ def _dispatch_retry_stage(project_id: str) -> None:
     _eager_thread(chain(*tasks).delay)
 
 
-class LLMModelViewSet(viewsets.ReadOnlyModelViewSet):
+class LLMModelViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
     serializer_class = LLMModelSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        qs = LLMModel.objects.filter(is_active=True).select_related("provider")
+        qs = LLMModel.objects.filter(is_active=True).filter(
+            models.Q(owner__isnull=True) | models.Q(owner=self.request.user)
+        ).select_related("provider")
         capability = self.request.query_params.get("capability")
         if capability:
             qs = qs.filter(capability=capability)
         return qs
+
+    def perform_create(self, serializer):
+        provider = serializer.validated_data["provider"]
+        if not UserAPIKey.objects.filter(owner=self.request.user, provider=provider).exists():
+            raise ValidationError({"provider": "Add an API key for this provider first."})
+        # `owner` isn't a serializer field, so DRF can't validate the DB's
+        # unique_owned_provider_capability_model constraint up front — a
+        # duplicate model_id for this user hits IntegrityError on save.
+        # Nested atomic() gives it a savepoint, so the failed insert can't
+        # poison an enclosing transaction.
+        try:
+            with transaction.atomic():
+                serializer.save(owner=self.request.user, is_free=False, is_default=False, is_active=True)
+        except IntegrityError:
+            raise ValidationError({"model_id": "You already have a model with this ID for this provider."})
+
+    def perform_destroy(self, instance):
+        if instance.owner_id != self.request.user.id:
+            raise PermissionDenied("Cannot delete a model you don't own.")
+        instance.delete()
 
 
 class SceneViewSet(viewsets.GenericViewSet):

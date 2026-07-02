@@ -77,6 +77,34 @@ class LLMModelTest(TestCase):
         self.assertEqual(str(m), "Gemini Flash (google)")
 
 
+class LLMModelOwnershipTest(TestCase):
+    def test_two_users_can_register_same_model_id(self):
+        p = _provider()
+        u1 = UserProfile.objects.create(cognito_sub="u1", email="u1@example.com")
+        u2 = UserProfile.objects.create(cognito_sub="u2", email="u2@example.com")
+        _llm(provider=p, model_id="custom-1", owner=u1)
+        _llm(provider=p, model_id="custom-1", owner=u2)  # must not raise
+
+    def test_user_cannot_duplicate_own_model_id(self):
+        p = _provider()
+        u1 = UserProfile.objects.create(cognito_sub="u1", email="u1@example.com")
+        _llm(provider=p, model_id="custom-1", owner=u1)
+        with self.assertRaises(IntegrityError):
+            _llm(provider=p, model_id="custom-1", owner=u1)
+
+    def test_owner_null_still_unique_among_global_rows(self):
+        p = _provider()
+        _llm(provider=p, model_id="global-1")
+        with self.assertRaises(IntegrityError):
+            _llm(provider=p, model_id="global-1")
+
+    def test_user_row_does_not_collide_with_global_row(self):
+        p = _provider()
+        u1 = UserProfile.objects.create(cognito_sub="u1", email="u1@example.com")
+        _llm(provider=p, model_id="shared-id")  # global, owner=None
+        _llm(provider=p, model_id="shared-id", owner=u1)  # must not raise
+
+
 class UserAPIKeyTest(TestCase):
     def setUp(self):
         os.environ["FIELD_ENCRYPTION_KEY"] = settings.FIELD_ENCRYPTION_KEY

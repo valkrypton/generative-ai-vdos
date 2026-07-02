@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { Button } from '@/components/ui/button'
 
 export interface Provider {
@@ -18,7 +18,8 @@ export interface ApiKey {
 }
 
 interface Props {
-  initialKeys: ApiKey[]
+  keys: ApiKey[]
+  onKeysChange: Dispatch<SetStateAction<ApiKey[]>>
   providers: Provider[]
 }
 
@@ -28,8 +29,7 @@ const inputCls =
 const ghostBtn =
   'text-xs border-[#2a2f3a] text-[#e7e9ee] bg-transparent hover:bg-[#1e222b]'
 
-export function ApiKeysPanel({ initialKeys, providers }: Props) {
-  const [keys, setKeys] = useState<ApiKey[]>(initialKeys)
+export function ApiKeysPanel({ keys, onKeysChange: setKeys, providers }: Props) {
   const [adding, setAdding] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)

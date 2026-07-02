@@ -70,17 +70,18 @@ def run_plan_stage(self, project_id):
         llm = resolve_plan_model(project)
         model_id = llm.model_id
         provider_code = llm.provider.code
-        secure_key = resolve_secure_key(project.owner, llm.provider)
         style = PRESETS.get(project.style) if project.style else None
 
-        logger.info(
-            "Plan stage — model=%s, provider=%s, key_source=%s, style=%s",
-            model_id, provider_code,
-            "db" if secure_key else "env-fallback",
-            project.style or "none",
-        )
-
+        # Transition before resolving the key: a MissingAPIKeyError raised here
+        # must still land on a status that's allowed to move to FAILED (DRAFT
+        # can't go straight to FAILED — only PLANNING can).
         project.transition_status(Status.PLANNING)
+        secure_key = resolve_secure_key(project.owner, llm.provider)
+
+        logger.info(
+            "Plan stage — model=%s, provider=%s, style=%s",
+            model_id, provider_code, project.style or "none",
+        )
 
         publish_event(project_id, Stage.PLAN, Level.INFO, f"Generating shot plan with {model_id}")
         plan = generate_shot_plan(project.prompt, model=model_id, style=style,
@@ -117,7 +118,6 @@ def run_refine_stage(self, project_id, instruction):
         llm = resolve_plan_model(project)
         model_id = llm.model_id
         provider_code = llm.provider.code
-        secure_key = resolve_secure_key(project.owner, llm.provider)
         plan_data = {**(project.shot_plan or {})}
         plan_data["scenes"] = [
             {
@@ -131,7 +131,11 @@ def run_refine_stage(self, project_id, instruction):
         ]
         current_plan = ShotPlan.model_validate(plan_data)
 
+        # Transition before resolving the key: a MissingAPIKeyError raised here
+        # must still land on a status that's allowed to move to FAILED (REVIEW
+        # can't go straight to FAILED — only PLANNING can).
         project.transition_status(Status.PLANNING)
+        secure_key = resolve_secure_key(project.owner, llm.provider)
 
         publish_event(project_id, Stage.PLAN, Level.INFO, f"Revising shot plan with {model_id}")
         plan = revise_shot_plan(current_plan, instruction, model=model_id,
@@ -164,8 +168,11 @@ def run_image_stage(self, project_id, scene_index):
                        project_id, scene_index)
         return {"project_id": str(project_id), "scene_index": scene_index}
 
+    llm = project.image_model
+
     try:
-        generate_scene(project, scene, scene_index)
+        secure_key = resolve_secure_key(project.owner, llm.provider)
+        generate_scene(project, scene, scene_index, secure_key, llm)
     except Exception as exc:
         scene.media_status = MediaStatus.FAILED
         scene.save(update_fields=["media_status", "updated_at"])
@@ -208,6 +215,17 @@ def run_video_stage(self, project_id, scene_index=None):
         publish_event(project_id, Stage.VIDEO, Level.INFO, "No animated scenes — skipping")
         return {"project_id": str(project_id)}
 
+    llm = project.video_model
+    try:
+        secure_key = resolve_secure_key(project.owner, llm.provider)
+    except Exception as exc:
+        logger.error("Animating scenes failed. cause: %s", exc, exc_info=True)
+        publish_event(project_id, Stage.VIDEO, Level.ERROR,
+                      f"Animating scenes failed. cause: {exc}")
+        fail_project(project, project_id, Stage.VIDEO,
+                     RuntimeError(f"All animated scene submissions failed: {exc}"))
+        return {"project_id": str(project_id)}
+
     for scene in animated:
         if (
             scene.media_status == MediaStatus.DONE
@@ -217,7 +235,7 @@ def run_video_stage(self, project_id, scene_index=None):
             logger.debug("Skipping completed video for scene %s", scene.index)
             continue
         try:
-            animate_scene(project, scene, scene.index)
+            animate_scene(project, scene, scene.index, secure_key)
         except Exception as exc:
             logger.error("Video scene %s failed: %s", scene.index, exc, exc_info=True)
             scene.media_status = MediaStatus.FAILED

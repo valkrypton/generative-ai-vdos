@@ -56,13 +56,19 @@ def build_shot_plan(project) -> ShotPlan:
     return ShotPlan.model_validate(plan_data)
 
 
+class MissingAPIKeyError(Exception):
+    """Raised when a project's owner has no API key configured for a required provider."""
+
+
 def resolve_secure_key(owner, provider):
     try:
         return UserAPIKey.objects.get(
             owner=owner, provider=provider,
         ).get_secure_key()
     except UserAPIKey.DoesNotExist:
-        return None
+        raise MissingAPIKeyError(
+            f"No API key configured for {provider.name} — add one in Settings."
+        )
 
 
 def resolve_plan_model(project):
@@ -135,13 +141,10 @@ def fail_project(project, project_id, stage, exc):
     publish_event(project_id, stage, Level.ERROR, error_message[:500])
 
 
-def generate_scene(project, scene, scene_index):
+def generate_scene(project, scene, scene_index, secure_key, llm):
     project_id = project.id
     plan = build_shot_plan(project)
 
-    llm = project.image_model
-
-    secure_key = resolve_secure_key(project.owner, llm.provider)
     provider = get_provider(llm.provider.code, api_key=secure_key)
 
     scene.media_status = MediaStatus.RUNNING
@@ -211,9 +214,8 @@ def generate_scene(project, scene, scene_index):
     return scene.media_path.name
 
 
-def animate_scene(project, scene, scene_index):
+def animate_scene(project, scene, scene_index, secure_key):
     project_id = project.id
-    secure_key = resolve_secure_key(project.owner, project.video_model.provider)
 
     plan_data = {**(project.shot_plan or {})}
     plan_data["scenes"] = [

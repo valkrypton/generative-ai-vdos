@@ -88,13 +88,17 @@ class RunVideoStageHappyPathTest(TestCase):
         mock_storage.storage.open.return_value = mock_file
         mock_download.side_effect = lambda url, path: path.write_bytes(FAKE_MP4)
 
+        os.environ["FIELD_ENCRYPTION_KEY"] = settings.FIELD_ENCRYPTION_KEY
         vm = _make_video_model()
         project = _make_animated_project(video_model=vm)
+        api_key = UserAPIKey(owner=project.owner, provider=vm.provider)
+        api_key.set_api_key("sk-test-dashscope-key12")
+        api_key.save()
 
         run_video_stage(str(project.id))
 
         mock_submit.assert_called_once()
-        mock_poll.assert_called_with("task_abc123", None)
+        mock_poll.assert_called_with("task_abc123", api_key.get_secure_key())
         mock_storage.upload.assert_called_once()
 
         animated = Scene.objects.get(project=project, index=0)
@@ -153,8 +157,12 @@ class RunVideoStageFailureTest(TestCase):
         mock_file.read.return_value = b"\x89PNG\r\n\x1a\n"
         mock_storage.storage.open.return_value = mock_file
 
+        os.environ["FIELD_ENCRYPTION_KEY"] = settings.FIELD_ENCRYPTION_KEY
         vm = _make_video_model()
         project = _make_animated_project(video_model=vm)
+        api_key = UserAPIKey(owner=project.owner, provider=vm.provider)
+        api_key.set_api_key("sk-test-dashscope-key12")
+        api_key.save()
 
         run_video_stage(str(project.id))
 
@@ -190,13 +198,45 @@ class RunVideoStageFailureTest(TestCase):
         mock_file.read.return_value = b"\x89PNG\r\n\x1a\n"
         mock_storage.storage.open.return_value = mock_file
 
+        os.environ["FIELD_ENCRYPTION_KEY"] = settings.FIELD_ENCRYPTION_KEY
         vm = _make_video_model()
         project = _make_animated_project(video_model=vm)
+        api_key = UserAPIKey(owner=project.owner, provider=vm.provider)
+        api_key.set_api_key("sk-test-dashscope-key12")
+        api_key.save()
 
         run_video_stage(str(project.id))
 
         scene = Scene.objects.get(project=project, index=0)
         self.assertEqual(scene.media_status, MediaStatus.FAILED)
 
+
+class RunVideoStageMissingKeyTest(TestCase):
+    @patch("apps.projects.utils._motion_prompt", return_value="prompt")
+    @patch("pipeline.video.wan.WanProvider.submit")
+    @patch("apps.projects.utils.storage_provider")
+    @patch("apps.projects.utils.time")
+    def test_no_key_marks_scene_failed(self, mock_time, mock_storage, mock_submit, mock_motion):
+        mock_time.time.return_value = 0
+        mock_time.sleep = MagicMock()
+        mock_file = MagicMock()
+        mock_file.__enter__ = MagicMock(return_value=mock_file)
+        mock_file.__exit__ = MagicMock(return_value=False)
+        mock_file.read.return_value = b"\x89PNG\r\n\x1a\n"
+        mock_storage.storage.open.return_value = mock_file
+
+        vm = _make_video_model()
+        project = _make_animated_project(video_model=vm)
+
+        run_video_stage(str(project.id))
+
+        mock_submit.assert_not_called()
+        # The key is now resolved once per stage, before the per-scene loop —
+        # a missing key fails the whole stage immediately, so the scene is
+        # never touched (stays PENDING) while the project is marked FAILED.
+        animated = Scene.objects.get(project=project, index=0)
+        self.assertEqual(animated.media_status, MediaStatus.PENDING)
+
         project.refresh_from_db()
         self.assertEqual(project.status, Status.FAILED)
+        self.assertIn("All animated scene submissions failed", project.error)
