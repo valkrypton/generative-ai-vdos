@@ -1,0 +1,21 @@
+{
+  "name": "genai-vdos-remotion",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Remotion composition track for generative-ai-vdos — title cards, quote cards, and other text/motion scenes that render into the same video/scene_NN.mp4 slot the FFmpeg assembler already consumes.",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "remotion render"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.0",
+    "@remotion/google-fonts": "^4.0.484",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "typescript": "^5.4.0"
+  }
+}

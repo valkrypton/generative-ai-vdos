@@ -40,11 +40,12 @@ def scene_payload(scene, *, include_voice: bool = False) -> dict:
     voice, so it's opt-in.
     """
     data = {
-        "media_prompt": scene.media_prompt,
+        "media_prompt": scene.media_prompt or None,
         "narration": scene.narration,
         "negative_prompt": scene.negative_prompt or None,
         "animate": scene.animate,
         "on_screen_text": scene.on_screen_text or None,
+        "compose": scene.compose or None,
     }
     if include_voice:
         data["voice"] = scene.voice or None
@@ -115,7 +116,8 @@ def save_plan(project, plan):
                 project=project,
                 index=i,
                 narration=scene.narration,
-                media_prompt=scene.media_prompt,
+                media_prompt=scene.media_prompt or "",
+                compose=(scene.compose.model_dump() if scene.compose else None),
                 on_screen_text=scene.on_screen_text or "",
                 negative_prompt=scene.negative_prompt or "",
                 animate=scene.animate,

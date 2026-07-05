@@ -50,12 +50,23 @@ def materialize_work_dir(project: Project) -> tuple[Path, ShotPlan]:
     plan = build_shot_plan(project)
     (work_dir / "shot_plan.json").write_text(plan.model_dump_json(indent=2))
 
+    has_compose = False
     for scene in project.scenes.order_by("index"):
         prefix = f"scene_{scene.index:02d}"
-        if not scene.media_path:
-            raise FileNotFoundError(f"scene {scene.index} is missing media_path")
         if not scene.audio_path:
             raise FileNotFoundError(f"scene {scene.index} is missing audio_path")
+
+        # Composition scenes have no generated image — their video/scene_NN.mp4
+        # is rendered from the narration audio below. Just stage the audio.
+        if scene.compose:
+            has_compose = True
+            _download_field(scene.audio_path, audio_dir / f"{prefix}.mp3")
+            if scene.words_path:
+                _download_field(scene.words_path, audio_dir / f"{prefix}.words.json")
+            continue
+
+        if not scene.media_path:
+            raise FileNotFoundError(f"scene {scene.index} is missing media_path")
 
         ext = Path(scene.media_path.name).suffix.lower()
         if ext == ".mp4":
@@ -66,6 +77,13 @@ def materialize_work_dir(project: Project) -> tuple[Path, ShotPlan]:
         _download_field(scene.audio_path, audio_dir / f"{prefix}.mp3")
         if scene.words_path:
             _download_field(scene.words_path, audio_dir / f"{prefix}.words.json")
+
+    # Render composition cards (Remotion) into video/scene_NN.mp4 from the staged
+    # audio — assemble() then prefers these clips exactly like an animated scene.
+    # Requires Node + the repo's remotion/ project on this worker host.
+    if has_compose:
+        from pipeline.compose import render_compositions
+        render_compositions(plan, work_dir)
 
     return work_dir, plan
 

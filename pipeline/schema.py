@@ -44,12 +44,56 @@ class Character(BaseModel):
         return self.outfits.get(outfit_name, self.description)
 
 
+class ComposeSpec(BaseModel):
+    """A text/motion scene rendered by the Remotion composition track instead of
+    image generation. Renders straight into the video/scene_NN.mp4 slot the FFmpeg
+    assembler already prefers, so it needs no image and no animate credit."""
+
+    template: str = Field(
+        description="Which Remotion template renders this scene: "
+        "'title_card' (an intro title with an optional supporting line), "
+        "'quote' (a centered quotation with an optional attribution), "
+        "'lower_third' (a lower-left name/label with an optional role line), or "
+        "'outro' (a centered closing/CTA card with an optional supporting line)."
+    )
+    heading: str = Field(
+        description="Main text: the title (title_card), the quote text (quote), "
+        "the name/label (lower_third), or the closing line (outro)."
+    )
+    subheading: Optional[str] = Field(
+        default=None,
+        description="title_card / lower_third / outro: a short supporting line "
+        "(a subtitle, a role, or a call to action). Ignored for quote.",
+    )
+    attribution: Optional[str] = Field(
+        default=None,
+        description="quote only: who said it, e.g. 'Rumi' (rendered as '— Rumi').",
+    )
+
+    @model_validator(mode="after")
+    def check_template(self) -> "ComposeSpec":
+        allowed = {"title_card", "quote", "lower_third", "outro"}
+        if self.template not in allowed:
+            raise ValueError(
+                f"compose.template must be one of {sorted(allowed)}, got {self.template!r}"
+            )
+        return self
+
+
 class Scene(BaseModel):
     narration: str = Field(description="Voiceover text for this scene, 1-3 sentences.")
-    media_prompt: str = Field(
+    media_prompt: Optional[str] = Field(
+        default=None,
         validation_alias=AliasChoices("media_prompt", "image_prompt"),
         description="Visual description for image generation. Concrete and specific; "
-        "no text rendering requests. The global style_prefix is prepended automatically.",
+        "no text rendering requests. The global style_prefix is prepended automatically. "
+        "Omit when this scene is composition-driven (set `compose` instead).",
+    )
+    compose: Optional[ComposeSpec] = Field(
+        default=None,
+        description="Set this to render the scene as a text/motion card via Remotion "
+        "(title card, quote) instead of a generated image. When set, media_prompt and "
+        "animate are ignored for this scene.",
     )
     on_screen_text: Optional[str] = Field(
         default=None, description="Optional short overlay text (max ~6 words)."
@@ -89,6 +133,15 @@ class Scene(BaseModel):
         "name defined in that character's outfits dict. Example: {\"boy\": \"superhero\"}. "
         "Characters not listed here use their default description.",
     )
+
+    @model_validator(mode="after")
+    def require_visual_source(self) -> "Scene":
+        if not self.compose and not self.media_prompt:
+            raise ValueError(
+                "each scene needs a visual source: set media_prompt (image scene) "
+                "or compose (title_card / quote card)"
+            )
+        return self
 
 
 class ShotPlan(BaseModel):

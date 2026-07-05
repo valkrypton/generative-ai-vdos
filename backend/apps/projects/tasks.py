@@ -162,6 +162,21 @@ def run_image_stage(self, project_id, scene_index):
                        project_id, scene_index)
         return {"project_id": str(project_id), "scene_index": scene_index}
 
+    # Composition scenes (title/quote/lower-third/outro cards) are rendered by
+    # Remotion at assemble time — no image to generate. Mark DONE so the
+    # image-review gate and approve-images can proceed.
+    if scene.compose:
+        template = (scene.compose or {}).get("template", "card")
+        scene.media_status = MediaStatus.DONE
+        scene.media_provider = "compose"
+        scene.save(update_fields=["media_status", "media_provider", "updated_at"])
+        publish_event(
+            project_id, Stage.IMAGES, Level.INFO,
+            f"Scene {scene_index} is a {template} card — no image needed",
+            scene_index=scene_index, media_status=MediaStatus.DONE,
+        )
+        return {"project_id": str(project_id), "scene_index": scene_index}
+
     llm = project.image_model
 
     try:

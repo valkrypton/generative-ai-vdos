@@ -214,11 +214,20 @@ def generate_images(plan: ShotPlan, out_dir: Path, backend: str | None = None) -
     if plan.characters:
         print("  images: character check (same description substituted in every scene):")
         for i, scene in enumerate(plan.scenes):
+            if scene.compose:
+                print(f"    scene {i}: (compose: {scene.compose.template}) — no image")
+                continue
             chars = plan.characters_in(scene.media_prompt)
             print(f"    scene {i}: {', '.join(chars) if chars else '-'}")
     refs = character_refs(plan, primary, out_dir)
     paths = []
     for i in range(len(plan.scenes)):
+        # Composition scenes are rendered by the compose stage (Remotion) straight
+        # into video/scene_NN.mp4 — they have no generated image.
+        if plan.scenes[i].compose:
+            print(f"  images: scene {i + 1}/{len(plan.scenes)} skipped "
+                  f"(compose: {plan.scenes[i].compose.template})")
+            continue
         data, used = generate_scene_image(plan, i, primary,
                                           fallback=backend is None, char_refs=refs)
         path = out_dir / f"scene_{i:02d}.png"

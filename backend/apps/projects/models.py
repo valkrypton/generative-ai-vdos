@@ -147,7 +147,10 @@ class Scene(TimestampMixin):
     )
     index          = models.IntegerField()
     narration      = models.TextField()
-    media_prompt   = models.TextField()
+    media_prompt   = models.TextField(blank=True, default="")
+    # Composition (Remotion text/motion card) spec — set instead of media_prompt.
+    # Shape mirrors pipeline.schema.ComposeSpec: {template, heading, subheading?, attribution?}.
+    compose        = models.JSONField(null=True, blank=True)
     on_screen_text = models.CharField(max_length=256, blank=True, default="")
     negative_prompt = models.TextField(max_length=256, blank=True, default="")
     animate        = models.BooleanField(default=False)

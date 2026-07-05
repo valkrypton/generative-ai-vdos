@@ -18,7 +18,7 @@ from .schema import ShotPlan
 
 load_env()
 
-STAGES = ["plan", "images", "animate", "voice", "assemble"]
+STAGES = ["plan", "images", "animate", "voice", "compose", "assemble"]
 
 
 def _flag(name: str) -> bool:
@@ -153,6 +153,21 @@ def main() -> None:
         save_state(work_dir, state)
     if args.until == "voice":
         print("stopped after voice (--until)")
+        return
+
+    # ---- Stage 3.5: compose (Remotion text/motion cards) ----
+    # Runs after voice so each card sizes itself to its narration; renders straight
+    # into video/scene_NN.mp4, which the assembler already prefers over Ken Burns.
+    if "compose" not in state["done"]:
+        compose_scenes = [i for i, s in enumerate(plan.scenes) if s.compose]
+        if compose_scenes:
+            from .compose import render_compositions
+            print(f"stage: compose (remotion, {len(compose_scenes)} card scene(s))")
+            render_compositions(plan, work_dir)
+        state["done"].append("compose")
+        save_state(work_dir, state)
+    if args.until == "compose":
+        print("stopped after compose (--until)")
         return
 
     # ---- Stage 4: assembly ----
