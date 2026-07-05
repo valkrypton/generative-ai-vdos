@@ -32,6 +32,25 @@ def get_work_dir(project):
     return base / str(project.owner_id) / str(project.id)
 
 
+def scene_payload(scene, *, include_voice: bool = False) -> dict:
+    """One Scene row -> a plan-scene dict for ShotPlan.model_validate.
+
+    Shared by build_shot_plan, animate_scene and run_refine_stage so the payload
+    shape can't drift between them. Only voiceover generation needs the per-scene
+    voice, so it's opt-in.
+    """
+    data = {
+        "media_prompt": scene.media_prompt,
+        "narration": scene.narration,
+        "negative_prompt": scene.negative_prompt or None,
+        "animate": scene.animate,
+        "on_screen_text": scene.on_screen_text or None,
+    }
+    if include_voice:
+        data["voice"] = scene.voice or None
+    return data
+
+
 def build_shot_plan(project) -> ShotPlan:
     """Merge plan-level metadata with Scene rows — single source of truth."""
     plan_data = {**(project.shot_plan or {})}
@@ -43,14 +62,7 @@ def build_shot_plan(project) -> ShotPlan:
         plan_data["music_mood"] = project.music
     plan_data.setdefault("music_mood", "calm")
     plan_data["scenes"] = [
-        {
-            "media_prompt": scene.media_prompt,
-            "narration": scene.narration,
-            "negative_prompt": scene.negative_prompt or None,
-            "animate": scene.animate,
-            "on_screen_text": scene.on_screen_text or None,
-            "voice": scene.voice or None,
-        }
+        scene_payload(scene, include_voice=True)
         for scene in Scene.objects.filter(project=project).order_by("index")
     ]
     return ShotPlan.model_validate(plan_data)
@@ -219,13 +231,7 @@ def animate_scene(project, scene, scene_index, secure_key):
 
     plan_data = {**(project.shot_plan or {})}
     plan_data["scenes"] = [
-        {
-            "media_prompt": s.media_prompt,
-            "narration": s.narration,
-            "negative_prompt": s.negative_prompt or None,
-            "animate": s.animate,
-            "on_screen_text": s.on_screen_text or None,
-        }
+        scene_payload(s)
         for s in Scene.objects.filter(project=project).order_by("index")
     ]
     plan = ShotPlan.model_validate(plan_data)

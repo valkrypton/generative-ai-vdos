@@ -78,6 +78,7 @@ def scene_media_upload_path(instance: "Scene", filename) -> str:
 def scene_audio_upload_path(instance: "Scene", filename) -> str:
     return f"{instance.project.owner_id}/{instance.project.id}/audio/{filename}"
 
+
 def video_upload_path(instance: "Project", filename) -> str:
     return f"{instance.owner_id}/{instance.id}/videos/{filename}"
 

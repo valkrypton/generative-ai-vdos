@@ -201,6 +201,33 @@ class SceneActionsTest(TestCase):
         self.assertTrue(self.project.stale)
         eager_thread.assert_called_once()
 
+    def test_patch_media_prompt_invalidates_image_and_marks_stale(self):
+        self.scene.media_status = MediaStatus.DONE
+        self.scene.save(update_fields=["media_status", "updated_at"])
+        resp = self.client.patch(
+            f"/api/projects/{self.project.id}/scenes/{self.scene.index}/",
+            data={"media_prompt": "a new prompt"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.scene.refresh_from_db()
+        self.project.refresh_from_db()
+        self.assertEqual(self.scene.media_prompt, "a new prompt")
+        self.assertEqual(self.scene.media_status, MediaStatus.PENDING)
+        self.assertTrue(self.project.stale)  # project is DONE
+
+    def test_patch_narration_invalidates_voice(self):
+        self.scene.voice_status = MediaStatus.DONE
+        self.scene.save(update_fields=["voice_status", "updated_at"])
+        resp = self.client.patch(
+            f"/api/projects/{self.project.id}/scenes/{self.scene.index}/",
+            data={"narration": "new narration"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.scene.refresh_from_db()
+        self.assertEqual(self.scene.voice_status, MediaStatus.PENDING)
+
     @patch("apps.projects.views._eager_thread")
     def test_revoice_empty_body_does_not_dispatch(self, eager_thread):
         resp = self.client.post(

@@ -102,8 +102,11 @@ def _animate_batch(provider, plan: ShotPlan, images_dir: Path, out_dir: Path,
                 del pending[i]
                 continue
             if url:
-                provider.download(url, out_dir / f"scene_{i:02d}.mp4")
-                print(f"  animate: scene {i + 1} done ({len(pending) - 1} still rendering)")
+                try:
+                    provider.download(url, out_dir / f"scene_{i:02d}.mp4")
+                    print(f"  animate: scene {i + 1} done ({len(pending) - 1} still rendering)")
+                except Exception as e:
+                    print(f"  animate: scene {i + 1} download failed ({e}) — stays a still")
                 del pending[i]
     for i in pending:
         print(f"  animate: scene {i + 1} timed out — stays a still")

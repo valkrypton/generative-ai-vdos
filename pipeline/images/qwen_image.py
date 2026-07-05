@@ -77,7 +77,6 @@ def _concurrency_slot():
             release(keys=[_SEM_KEY])
 
 
-
 MAX_PROMPT = 1500  # warn before cutting; most models accept well beyond this
 MAX_REFS = 3  # cap on reference images sent per edit
 

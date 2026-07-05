@@ -9,7 +9,7 @@ concurrently instead of waiting on each clip in turn.
 """
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pipeline.secure import SecureString

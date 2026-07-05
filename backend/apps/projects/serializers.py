@@ -1,5 +1,6 @@
 import os
 
+from django.db.models import F, Q
 from rest_framework import serializers
 
 from apps.core.models import Provider
@@ -25,13 +26,52 @@ def _absolute_media_url(url: str, request) -> str:
     return f"{origin}/{url.lstrip('/')}"
 
 
+class ScopedModelSlugField(serializers.SlugRelatedField):
+    """Resolve an LLMModel by ``model_id``, scoped to the requesting user.
+
+    Two safety properties the plain SlugRelatedField lacked:
+    - **Scoping**: only global rows (owner NULL) and the user's own custom rows
+      are selectable, so a user can't attach another user's private model.
+    - **No 500 on duplicates**: ``model_id`` is unique only per
+      (provider, capability, owner), so two active rows can share one. The base
+      field's ``.get()`` would raise ``MultipleObjectsReturned``; we order
+      global-first then lowest id and take ``.first()`` for a deterministic pick.
+    """
+
+    def __init__(self, capability, **kwargs):
+        self.capability = capability
+        kwargs.setdefault("slug_field", "model_id")
+        kwargs.setdefault("required", False)
+        kwargs.setdefault("allow_null", True)
+        # queryset is computed per-request in get_queryset(); a static one here
+        # would ignore the user scope.
+        kwargs["queryset"] = LLMModel.objects.none()
+        super().__init__(**kwargs)
+
+    def get_queryset(self):
+        qs = LLMModel.objects.filter(capability=self.capability, is_active=True)
+        request = self.context.get("request")
+        if request is not None and request.user.is_authenticated:
+            return qs.filter(Q(owner__isnull=True) | Q(owner=request.user))
+        return qs.filter(owner__isnull=True)
+
+    def to_internal_value(self, data):
+        try:
+            obj = (
+                self.get_queryset()
+                .filter(**{self.slug_field: data})
+                .order_by(F("owner_id").asc(nulls_first=True), "id")
+                .first()
+            )
+        except (TypeError, ValueError):
+            self.fail("invalid")
+        if obj is None:
+            self.fail("does_not_exist", slug_name=self.slug_field, value=str(data))
+        return obj
+
+
 def _model_slug(capability):
-    return serializers.SlugRelatedField(
-        slug_field="model_id",
-        queryset=LLMModel.objects.filter(capability=capability, is_active=True),
-        required=False,
-        allow_null=True,
-    )
+    return ScopedModelSlugField(capability)
 
 
 class SceneSerializer(serializers.ModelSerializer):

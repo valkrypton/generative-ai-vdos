@@ -141,7 +141,14 @@ class ShotPlan(BaseModel):
             found.sort()
         return [name for _, name in found]
 
-    def expand(self, text: str, max_chars: int = MAX_PROMPT_CHARS, scene_outfit: dict[str, str] | None = None, *, include_style_overhead: bool = False) -> str:
+    def expand(
+        self,
+        text: str,
+        max_chars: int = MAX_PROMPT_CHARS,
+        scene_outfit: dict[str, str] | None = None,
+        *,
+        include_style_overhead: bool = False,
+    ) -> str:
         """Replace character references with their full descriptions.
 
         Matches both {name} placeholders and bare names (word-boundary,

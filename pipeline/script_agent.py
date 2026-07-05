@@ -398,6 +398,35 @@ def consistency_review(
     )
 
 
+def refine_plan(
+    plan: ShotPlan,
+    *,
+    model: str = "claude-haiku-4-5",
+    animate: bool = False,
+    polish: bool = True,
+    review: bool = True,
+    on_write=None,
+) -> ShotPlan:
+    """Standard post-generation refinement: polish image prompts, then run the
+    consistency review — the sequence shared by pipeline.run and pipeline.refine.
+
+    ``animate`` is threaded into consistency_review so the review picks the same
+    animate-cap vs animation-disabled clause the generator used. ``on_write(plan)``
+    is called after each pass so callers can persist the intermediate plan.
+    """
+    if polish:
+        print(f"  polishing image prompts ({model})...")
+        plan = polish_image_prompts(plan, model=model)
+        if on_write:
+            on_write(plan)
+    if review:
+        print(f"  consistency review ({model})...")
+        plan = consistency_review(plan, model=model, animate=animate)
+        if on_write:
+            on_write(plan)
+    return plan
+
+
 def revise_shot_plan(
     plan: ShotPlan,
     feedback: str,

@@ -40,7 +40,13 @@ def _overlay_filter(text: Optional[str]) -> str:
     """drawtext filter chunk for the scene's on_screen_text (top center), or ''."""
     if not text or _FONT is None:
         return ""
-    esc = text.replace("\\", "\\\\").replace("'", "’").replace(":", "\\:").replace("%", "\\%")
+    # drawtext's filtergraph parser also chokes on newlines and [] — collapse the
+    # former to spaces and escape the latter (backslash first, so we don't double it).
+    esc = (text.replace("\\", "\\\\")
+               .replace("\n", " ").replace("\r", " ")
+               .replace("'", "’")
+               .replace(":", "\\:").replace("%", "\\%")
+               .replace("[", "\\[").replace("]", "\\]"))
     return (f",drawtext=fontfile='{_FONT}':text='{esc}':fontsize=58:fontcolor=white:"
             f"borderw=3:bordercolor=black@0.8:x=(w-text_w)/2:y=70")
 

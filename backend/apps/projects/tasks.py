@@ -19,6 +19,7 @@ from apps.projects.utils import (
     resolve_plan_model,
     resolve_secure_key,
     save_plan,
+    scene_payload,
 )
 from apps.projects.workdir import materialize_work_dir, music_root
 from pipeline.assemble import assemble, pick_music
@@ -120,14 +121,7 @@ def run_refine_stage(self, project_id, instruction):
         provider_code = llm.provider.code
         plan_data = {**(project.shot_plan or {})}
         plan_data["scenes"] = [
-            {
-                "media_prompt": s.media_prompt,
-                "narration": s.narration,
-                "negative_prompt": s.negative_prompt or None,
-                "animate": s.animate,
-                "on_screen_text": s.on_screen_text or None,
-            }
-            for s in project.scenes.order_by("index")
+            scene_payload(s) for s in project.scenes.order_by("index")
         ]
         current_plan = ShotPlan.model_validate(plan_data)
 

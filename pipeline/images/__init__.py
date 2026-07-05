@@ -40,11 +40,22 @@ ALIASES = {
 }
 
 
+# Paid backend that must never be auto-selected or reached via fallback — only
+# via an explicit backend name (money rule). See CLAUDE.md "Money rules".
+AUTO_EXCLUDE = {"gpt-image-1"}
+
+
 def get_provider(name: str | None = None, api_key=None) -> ImageProvider:
     if not name:
+        # Auto-pick: first available provider in priority order, skipping the paid
+        # gpt-image-1. PlaceholderProvider is always available, so this terminates
+        # (renders gradient placeholders when no image key is configured).
+        for p in PROVIDERS:
+            if p.name not in AUTO_EXCLUDE and p.available():
+                return p
         raise RuntimeError(
-            "no image backend set — put IMAGE_BACKEND in .env "
-            "(qwen | openai | flux | stock | placeholder) or pass --image-backend")
+            "no image backend available (placeholder should always be) — "
+            "check pipeline/images/__init__.py PROVIDERS")
     name = ALIASES.get(name.strip().lower(), name)
     for p in PROVIDERS:
         if p.name == name:
@@ -144,7 +155,6 @@ def generate_scene_image(
                     edit_prompt = (prompt + " Keep the person's face, hair and "
                                    "clothing identical to the reference image.")
             else:
-                char_map = {c.name: c for c in plan.characters}
                 mapping = "; ".join(f"reference image {i + 1} is {{{n}}}"
                                     for i, n in enumerate(named[:3]))
                 any_inanimate = any(
@@ -179,7 +189,10 @@ def generate_scene_image(
 
     chain = [primary]
     if fallback:
-        chain += [p for p in PROVIDERS if p is not primary and p.available()]
+        # Never fall through to the paid gpt-image-1 (money rule); it is only
+        # reachable when named explicitly as the primary (which disables fallback).
+        chain += [p for p in PROVIDERS
+                  if p is not primary and p.name not in AUTO_EXCLUDE and p.available()]
     last_error = None
     for provider in chain:
         try:
