@@ -1,6 +1,6 @@
 """The shot plan — the contract every downstream stage consumes."""
 import re
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import AliasChoices, BaseModel, Field, model_validator
 
@@ -44,12 +44,47 @@ class Character(BaseModel):
         return self.outfits.get(outfit_name, self.description)
 
 
+class ComposeSpec(BaseModel):
+    """A text/motion scene rendered by the Remotion composition track instead of
+    image generation. Renders straight into the video/scene_NN.mp4 slot the FFmpeg
+    assembler already prefers, so it needs no image and no animate credit."""
+
+    template: Literal["title_card", "quote", "lower_third", "outro"] = Field(
+        description="Which Remotion template renders this scene: "
+        "'title_card' (an intro title with an optional supporting line), "
+        "'quote' (a centered quotation with an optional attribution), "
+        "'lower_third' (a lower-left name/label with an optional role line), or "
+        "'outro' (a centered closing/CTA card with an optional supporting line)."
+    )
+    heading: str = Field(
+        description="Main text: the title (title_card), the quote text (quote), "
+        "the name/label (lower_third), or the closing line (outro)."
+    )
+    subheading: Optional[str] = Field(
+        default=None,
+        description="title_card / lower_third / outro: a short supporting line "
+        "(a subtitle, a role, or a call to action). Ignored for quote.",
+    )
+    attribution: Optional[str] = Field(
+        default=None,
+        description="quote only: who said it, e.g. 'Rumi' (rendered as '— Rumi').",
+    )
+
+
 class Scene(BaseModel):
     narration: str = Field(description="Voiceover text for this scene, 1-3 sentences.")
-    media_prompt: str = Field(
+    media_prompt: Optional[str] = Field(
+        default=None,
         validation_alias=AliasChoices("media_prompt", "image_prompt"),
         description="Visual description for image generation. Concrete and specific; "
-        "no text rendering requests. The global style_prefix is prepended automatically.",
+        "no text rendering requests. The global style_prefix is prepended automatically. "
+        "Omit when this scene is composition-driven (set `compose` instead).",
+    )
+    compose: Optional[ComposeSpec] = Field(
+        default=None,
+        description="Set this to render the scene as a text/motion card via Remotion "
+        "(title card, quote) instead of a generated image. When set, media_prompt and "
+        "animate are ignored for this scene.",
     )
     on_screen_text: Optional[str] = Field(
         default=None, description="Optional short overlay text (max ~6 words)."
@@ -90,6 +125,19 @@ class Scene(BaseModel):
         "Characters not listed here use their default description.",
     )
 
+    @model_validator(mode="after")
+    def require_visual_source(self) -> "Scene":
+        if not self.compose and not self.media_prompt:
+            raise ValueError(
+                "each scene needs a visual source: set media_prompt (image scene) "
+                "or compose (title_card / quote card)"
+            )
+        if self.compose:
+            # compose scenes have no source image to animate — enforce the "animate
+            # is ignored" contract in code rather than relying on the LLM prompt.
+            self.animate = False
+        return self
+
 
 class ShotPlan(BaseModel):
     title: str = Field(description="YouTube title, under 70 characters, curiosity-driven.")
@@ -125,12 +173,14 @@ class ShotPlan(BaseModel):
                 self.scenes[i].animate = False
         return self
 
-    def characters_in(self, text: str, *, by_position: bool = False) -> List[str]:
+    def characters_in(self, text: str | None, *, by_position: bool = False) -> List[str]:
         """Names of characters referenced in text (via {placeholder} or bare name).
 
         Default order follows self.characters; with by_position=True, names are
         sorted by their first appearance position in text.
         """
+        if not text:
+            return []
         found: list[tuple[int, str]] = []
         for c in self.characters:
             pattern = r"\{" + re.escape(c.name) + r"\}|\b" + re.escape(c.name) + r"\b"
@@ -141,7 +191,14 @@ class ShotPlan(BaseModel):
             found.sort()
         return [name for _, name in found]
 
-    def expand(self, text: str, max_chars: int = MAX_PROMPT_CHARS, scene_outfit: dict[str, str] | None = None, *, include_style_overhead: bool = False) -> str:
+    def expand(
+        self,
+        text: str | None,
+        max_chars: int = MAX_PROMPT_CHARS,
+        scene_outfit: dict[str, str] | None = None,
+        *,
+        include_style_overhead: bool = False,
+    ) -> str:
         """Replace character references with their full descriptions.
 
         Matches both {name} placeholders and bare names (word-boundary,
@@ -161,7 +218,11 @@ class ShotPlan(BaseModel):
         budget so the compacting pass triggers at the right threshold. Callers
         that do not prepend style_prefix (motion prompts, refine display, …)
         should leave it False to avoid premature compaction.
+
+        Returns "" for compose scenes (media_prompt/motion is None).
         """
+        if not text:
+            return ""
         scene_outfit = scene_outfit or {}
         budget = max_chars
         if include_style_overhead:

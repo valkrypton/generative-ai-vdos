@@ -1,10 +1,13 @@
 """Replicate image backend (~$0.003/image for Flux Schnell). Needs
 REPLICATE_API_TOKEN, the replicate package, and the model id in .env
 (REPLICATE_IMAGE_MODEL) — no model is hardcoded."""
+import logging
 import os
 import urllib.request
 
 from .base import ImageProvider
+
+logger = logging.getLogger(__name__)
 
 
 class FluxProvider(ImageProvider):
@@ -35,5 +38,10 @@ class FluxProvider(ImageProvider):
             input={"prompt": prompt, "aspect_ratio": "16:9", "output_format": "png"},
         )
         url = str(output[0]) if isinstance(output, list) else str(output)
+        if on_preview_url is not None:
+            try:
+                on_preview_url(url)
+            except Exception as e:
+                logger.warning("on_preview_url callback failed (ignored): %s", e)
         with urllib.request.urlopen(url, timeout=60) as resp:
             return resp.read()

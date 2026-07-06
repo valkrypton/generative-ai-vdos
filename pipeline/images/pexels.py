@@ -1,6 +1,7 @@
 """Pexels free stock photos. Needs PEXELS_API_KEY (free signup, no billing)."""
 import io
 import json
+import logging
 import os
 import urllib.parse
 import urllib.request
@@ -9,6 +10,8 @@ from PIL import Image
 
 from .base import ImageProvider
 from .util import to_png_bytes
+
+logger = logging.getLogger(__name__)
 
 
 class PexelsProvider(ImageProvider):
@@ -31,6 +34,12 @@ class PexelsProvider(ImageProvider):
             photos = json.loads(resp.read())["photos"]
         if not photos:
             raise LookupError(f"no pexels results for {q!r}")
-        with urllib.request.urlopen(photos[0]["src"]["large2x"], timeout=30) as resp:
+        preview = photos[0]["src"]["large2x"]
+        if on_preview_url is not None:
+            try:
+                on_preview_url(preview)
+            except Exception as e:
+                logger.warning("on_preview_url callback failed (ignored): %s", e)
+        with urllib.request.urlopen(preview, timeout=30) as resp:
             img = Image.open(io.BytesIO(resp.read())).convert("RGB")
         return to_png_bytes(img)

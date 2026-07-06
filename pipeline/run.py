@@ -18,7 +18,7 @@ from .schema import ShotPlan
 
 load_env()
 
-STAGES = ["plan", "images", "animate", "voice", "assemble"]
+STAGES = ["plan", "images", "animate", "voice", "compose", "assemble"]
 
 
 def _flag(name: str) -> bool:
@@ -94,16 +94,15 @@ def main() -> None:
 
     # ---- Stage 1: shot plan ----
     if "plan" not in state["done"]:
-        from .script_agent import consistency_review, generate_shot_plan, polish_image_prompts
+        from .script_agent import generate_shot_plan, refine_plan
         print(f"stage: plan ({args.model})")
-        plan = generate_shot_plan(args.topic, model=args.model, style=style)
+        plan = generate_shot_plan(args.topic, model=args.model, style=style,
+                                  animate=args.animate)
         plan_file.write_text(plan.model_dump_json(indent=2))
-        print(f"  polishing image prompts ({args.model})...")
-        plan = polish_image_prompts(plan, model=args.model)
-        plan_file.write_text(plan.model_dump_json(indent=2))
-        print(f"  consistency review ({args.model})...")
-        plan = consistency_review(plan, model=args.model)
-        plan_file.write_text(plan.model_dump_json(indent=2))
+        plan = refine_plan(
+            plan, model=args.model, animate=args.animate,
+            on_write=lambda p: plan_file.write_text(p.model_dump_json(indent=2)),
+        )
         state["done"].append("plan")
         save_state(work_dir, state)
         print(f"  wrote {plan_file} ({len(plan.scenes)} scenes)")
@@ -154,6 +153,21 @@ def main() -> None:
         save_state(work_dir, state)
     if args.until == "voice":
         print("stopped after voice (--until)")
+        return
+
+    # ---- Stage 3.5: compose (Remotion text/motion cards) ----
+    # Runs after voice so each card sizes itself to its narration; renders straight
+    # into video/scene_NN.mp4, which the assembler already prefers over Ken Burns.
+    if "compose" not in state["done"]:
+        compose_scenes = [i for i, s in enumerate(plan.scenes) if s.compose]
+        if compose_scenes:
+            from .compose import render_compositions
+            print(f"stage: compose (remotion, {len(compose_scenes)} card scene(s))")
+            render_compositions(plan, work_dir)
+        state["done"].append("compose")
+        save_state(work_dir, state)
+    if args.until == "compose":
+        print("stopped after compose (--until)")
         return
 
     # ---- Stage 4: assembly ----

@@ -66,6 +66,8 @@ def animate_scenes(plan: ShotPlan, images_dir: Path, out_dir: Path,
     for i, scene in enumerate(plan.scenes):
         if (out_dir / f"scene_{i:02d}.mp4").exists():
             print(f"  animate: scene {i + 1} clip exists, skipping")
+        elif scene.compose:
+            print(f"  animate: scene {i + 1} skipped (compose card, no source image)")
         elif not scene.animate:
             print(f"  animate: scene {i + 1} skipped (animate=false — uses Ken Burns)")
         else:
@@ -102,8 +104,15 @@ def _animate_batch(provider, plan: ShotPlan, images_dir: Path, out_dir: Path,
                 del pending[i]
                 continue
             if url:
-                provider.download(url, out_dir / f"scene_{i:02d}.mp4")
-                print(f"  animate: scene {i + 1} done ({len(pending) - 1} still rendering)")
+                clip_path = out_dir / f"scene_{i:02d}.mp4"
+                try:
+                    provider.download(url, clip_path)
+                    print(f"  animate: scene {i + 1} done ({len(pending) - 1} still rendering)")
+                except Exception as e:
+                    print(f"  animate: scene {i + 1} download failed ({e}) — stays a still")
+                    # download() may have written a partial file before raising — remove it
+                    # so a later run doesn't mistake it for a finished clip and skip the scene.
+                    clip_path.unlink(missing_ok=True)
                 del pending[i]
     for i in pending:
         print(f"  animate: scene {i + 1} timed out — stays a still")

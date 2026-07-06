@@ -58,6 +58,13 @@ class ModerationEnabledTest(SimpleTestCase):
 
         check_text("some subtle harassment")
 
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False)
+    @patch("openai.OpenAI")
+    def test_openai_moderation_fails_open_on_error(self, mock_openai_cls):
+        # A moderation outage/timeout must not raise into the request path.
+        mock_openai_cls.return_value.moderations.create.side_effect = RuntimeError("timeout")
+        check_text("some clean content")  # must not raise
+
 
 class DRFHelpersTest(SimpleTestCase):
     @override_settings(CONTENT_MODERATION_ENABLED=True)

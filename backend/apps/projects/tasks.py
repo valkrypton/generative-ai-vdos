@@ -19,6 +19,7 @@ from apps.projects.utils import (
     resolve_plan_model,
     resolve_secure_key,
     save_plan,
+    scene_payload,
 )
 from apps.projects.workdir import materialize_work_dir, music_root
 from pipeline.assemble import assemble, pick_music
@@ -120,14 +121,7 @@ def run_refine_stage(self, project_id, instruction):
         provider_code = llm.provider.code
         plan_data = {**(project.shot_plan or {})}
         plan_data["scenes"] = [
-            {
-                "media_prompt": s.media_prompt,
-                "narration": s.narration,
-                "negative_prompt": s.negative_prompt or None,
-                "animate": s.animate,
-                "on_screen_text": s.on_screen_text or None,
-            }
-            for s in project.scenes.order_by("index")
+            scene_payload(s) for s in project.scenes.order_by("index")
         ]
         current_plan = ShotPlan.model_validate(plan_data)
 
@@ -166,6 +160,21 @@ def run_image_stage(self, project_id, scene_index):
     except (Project.DoesNotExist, Scene.DoesNotExist):
         logger.warning("Project %s / scene %s not found, aborting image stage",
                        project_id, scene_index)
+        return {"project_id": str(project_id), "scene_index": scene_index}
+
+    # Composition scenes (title/quote/lower-third/outro cards) are rendered by
+    # Remotion at assemble time — no image to generate. Mark DONE so the
+    # image-review gate and approve-images can proceed.
+    if scene.compose:
+        template = (scene.compose or {}).get("template", "card")
+        scene.media_status = MediaStatus.DONE
+        scene.media_provider = "compose"
+        scene.save(update_fields=["media_status", "media_provider", "updated_at"])
+        publish_event(
+            project_id, Stage.IMAGES, Level.INFO,
+            f"Scene {scene_index} is a {template} card — no image needed",
+            scene_index=scene_index, media_status=MediaStatus.DONE,
+        )
         return {"project_id": str(project_id), "scene_index": scene_index}
 
     llm = project.image_model
@@ -207,9 +216,11 @@ def run_video_stage(self, project_id, scene_index=None):
         return {"project_id": str(project_id)}
 
     if scene_index is not None:
-        animated = list(Scene.objects.filter(project=project, index=scene_index, animate=True))
+        animated = list(Scene.objects.filter(
+            project=project, index=scene_index, animate=True, compose__isnull=True))
     else:
-        animated = list(Scene.objects.filter(project=project, animate=True).order_by("index"))
+        animated = list(Scene.objects.filter(
+            project=project, animate=True, compose__isnull=True).order_by("index"))
 
     if not animated:
         publish_event(project_id, Stage.VIDEO, Level.INFO, "No animated scenes — skipping")

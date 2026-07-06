@@ -11,7 +11,7 @@ from pathlib import Path
 
 from ..env import load_env
 from ..schema import ShotPlan
-from . import generate_images, generate_scene_image, get_provider
+from . import character_refs, generate_images, generate_scene_image, get_provider
 
 
 def main() -> None:
@@ -33,9 +33,17 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if args.scene is not None:
+        if plan.scenes[args.scene].compose:
+            print(f"scene {args.scene} is a compose card "
+                  f"({plan.scenes[args.scene].compose.template}) — no image to regenerate")
+            return
         primary = get_provider(args.backend)
+        # Reuse (or rebuild only the missing) character reference portraits so a
+        # single-scene regen keeps the same faces/outfits as the rest of the video,
+        # matching the full-run path in generate_images().
+        refs = character_refs(plan, primary, out_dir)
         data, used = generate_scene_image(plan, args.scene, primary,
-                                          fallback=args.backend is None)
+                                          fallback=args.backend is None, char_refs=refs)
         path = out_dir / f"scene_{args.scene:02d}.png"
         path.write_bytes(data)
         print(f"regenerated {path} via {used.name}")

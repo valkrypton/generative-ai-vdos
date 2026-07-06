@@ -40,11 +40,22 @@ ALIASES = {
 }
 
 
+# Paid backend that must never be auto-selected or reached via fallback — only
+# via an explicit backend name (money rule). See CLAUDE.md "Money rules".
+AUTO_EXCLUDE = {"gpt-image-1"}
+
+
 def get_provider(name: str | None = None, api_key=None) -> ImageProvider:
     if not name:
+        # Auto-pick: first available provider in priority order, skipping the paid
+        # gpt-image-1. PlaceholderProvider is always available, so this terminates
+        # (renders gradient placeholders when no image key is configured).
+        for p in PROVIDERS:
+            if p.name not in AUTO_EXCLUDE and p.available():
+                return p
         raise RuntimeError(
-            "no image backend set — put IMAGE_BACKEND in .env "
-            "(qwen | openai | flux | stock | placeholder) or pass --image-backend")
+            "no image backend available (placeholder should always be) — "
+            "check pipeline/images/__init__.py PROVIDERS")
     name = ALIASES.get(name.strip().lower(), name)
     for p in PROVIDERS:
         if p.name == name:
@@ -144,7 +155,6 @@ def generate_scene_image(
                     edit_prompt = (prompt + " Keep the person's face, hair and "
                                    "clothing identical to the reference image.")
             else:
-                char_map = {c.name: c for c in plan.characters}
                 mapping = "; ".join(f"reference image {i + 1} is {{{n}}}"
                                     for i, n in enumerate(named[:3]))
                 any_inanimate = any(
@@ -170,7 +180,8 @@ def generate_scene_image(
         if not ref.is_file():
             raise RuntimeError(f"scene {index + 1}: reference_image not found: {ref}")
         editor = primary if hasattr(primary, "edit") else next(
-            (p for p in PROVIDERS if hasattr(p, "edit") and p.available()), None)
+            (p for p in PROVIDERS if hasattr(p, "edit")
+             and p.name not in AUTO_EXCLUDE and p.available()), None)
         if editor is None:
             raise RuntimeError("reference_image needs a backend with edit support "
                                "(gpt-image-1 — set OPENAI_API_KEY)")
@@ -179,7 +190,10 @@ def generate_scene_image(
 
     chain = [primary]
     if fallback:
-        chain += [p for p in PROVIDERS if p is not primary and p.available()]
+        # Never fall through to the paid gpt-image-1 (money rule); it is only
+        # reachable when named explicitly as the primary (which disables fallback).
+        chain += [p for p in PROVIDERS
+                  if p is not primary and p.name not in AUTO_EXCLUDE and p.available()]
     last_error = None
     for provider in chain:
         try:
@@ -201,11 +215,20 @@ def generate_images(plan: ShotPlan, out_dir: Path, backend: str | None = None) -
     if plan.characters:
         print("  images: character check (same description substituted in every scene):")
         for i, scene in enumerate(plan.scenes):
+            if scene.compose:
+                print(f"    scene {i}: (compose: {scene.compose.template}) — no image")
+                continue
             chars = plan.characters_in(scene.media_prompt)
             print(f"    scene {i}: {', '.join(chars) if chars else '-'}")
     refs = character_refs(plan, primary, out_dir)
     paths = []
     for i in range(len(plan.scenes)):
+        # Composition scenes are rendered by the compose stage (Remotion) straight
+        # into video/scene_NN.mp4 — they have no generated image.
+        if plan.scenes[i].compose:
+            print(f"  images: scene {i + 1}/{len(plan.scenes)} skipped "
+                  f"(compose: {plan.scenes[i].compose.template})")
+            continue
         data, used = generate_scene_image(plan, i, primary,
                                           fallback=backend is None, char_refs=refs)
         path = out_dir / f"scene_{i:02d}.png"

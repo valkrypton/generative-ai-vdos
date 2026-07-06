@@ -48,9 +48,16 @@ def _openai_flags(text: str) -> bool:
         logger.warning("openai package unavailable — skipping API moderation")
         return False
 
-    client = OpenAI(api_key=api_key)
-    response = client.moderations.create(
-        input=text,
-        model="omni-moderation-latest",
-    )
+    try:
+        client = OpenAI(api_key=api_key, timeout=10.0)
+        response = client.moderations.create(
+            input=text,
+            model="omni-moderation-latest",
+        )
+    except Exception as exc:
+        # Fail open: a moderation outage/timeout must not 500 the request or block
+        # legitimate content (the local blocklist already ran first). It also caps
+        # the blocking time spent in the request path via the client timeout.
+        logger.warning("OpenAI moderation call failed (%s) — allowing content", exc)
+        return False
     return any(result.flagged for result in response.results)

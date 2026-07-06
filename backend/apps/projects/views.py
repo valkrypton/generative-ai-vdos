@@ -64,6 +64,14 @@ class SSERenderer(BaseRenderer):
         return data
 
 
+def _require_status(project, expected, detail):
+    """Return a 409 Response if the project isn't in the expected state, else None.
+    Usage: ``if resp := _require_status(...): return resp``."""
+    if project.status != expected:
+        return Response({"detail": detail}, status=status.HTTP_409_CONFLICT)
+    return None
+
+
 class ProjectViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
@@ -71,6 +79,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return (
             Project.objects.filter(owner=self.request.user)
+            .select_related("plan_model", "image_model", "video_model")
             .prefetch_related("scenes")
             .order_by("-created_at")
         )
@@ -98,11 +107,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
     def partial_update(self, request, *args, **kwargs):
         with transaction.atomic():
             project = self._get_locked_project()
-            if project.status != Status.REVIEW:
-                return Response(
-                    {"detail": "Can only edit plan in REVIEW state."},
-                    status=status.HTTP_409_CONFLICT,
-                )
+            if resp := _require_status(project, Status.REVIEW,
+                                       "Can only edit plan in REVIEW state."):
+                return resp
             serializer = self.get_serializer(project, data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)
             self.perform_update(serializer)
@@ -119,11 +126,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
                     self.get_serializer(project).data,
                     status=status.HTTP_202_ACCEPTED,
                 )
-            if project.status != Status.REVIEW:
-                return Response(
-                    {"detail": f"Cannot approve from {project.status} state."},
-                    status=status.HTTP_409_CONFLICT,
-                )
+            if resp := _require_status(project, Status.REVIEW,
+                                       f"Cannot approve from {project.status} state."):
+                return resp
             project.transition_status(Status.GENERATING)
         transaction.on_commit(lambda: _dispatch_generate_stage(str(project.id)))
         return Response(self.get_serializer(project).data, status=status.HTTP_202_ACCEPTED)
@@ -132,11 +137,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
     def retry(self, request, pk=None):
         with transaction.atomic():
             project = self._get_locked_project()
-            if project.status != Status.FAILED:
-                return Response(
-                    {"detail": f"Cannot retry from {project.status} state."},
-                    status=status.HTTP_409_CONFLICT,
-                )
+            if resp := _require_status(project, Status.FAILED,
+                                       f"Cannot retry from {project.status} state."):
+                return resp
             project_id = _resume_failed_project(project)
         transaction.on_commit(lambda: _dispatch_retry_stage(project_id))
         return Response(self.get_serializer(project).data, status=status.HTTP_202_ACCEPTED)
@@ -153,11 +156,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
             return resp
         with transaction.atomic():
             project = self._get_locked_project()
-            if project.status != Status.REVIEW:
-                return Response(
-                    {"detail": f"Cannot refine from {project.status} state."},
-                    status=status.HTTP_409_CONFLICT,
-                )
+            if resp := _require_status(project, Status.REVIEW,
+                                       f"Cannot refine from {project.status} state."):
+                return resp
             project.transition_status(Status.PLANNING)
         project_id = str(project.id)
         transaction.on_commit(lambda: _dispatch_refine_stage(project_id, instruction))
@@ -235,20 +236,21 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="regenerate-images")
     def regenerate_images(self, request, pk=None):
-        project = self._get_locked_project()
-        if project.status == Status.IMAGE_REVIEW:
-            return Response(
-                {"detail": "Cannot bulk-regenerate images during review; regenerate scenes individually."},
-                status=status.HTTP_409_CONFLICT,
+        with transaction.atomic():
+            project = self._get_locked_project()
+            if project.status == Status.IMAGE_REVIEW:
+                return Response(
+                    {"detail": "Cannot bulk-regenerate images during review; regenerate scenes individually."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            scene_indices = list(
+                Scene.objects.filter(project=project)
+                .values_list("index", flat=True)
+                .order_by("index")
             )
-        scene_indices = list(
-            Scene.objects.filter(project=project)
-            .values_list("index", flat=True)
-            .order_by("index")
-        )
-        Scene.objects.filter(project=project).update(
-            media_status=MediaStatus.PENDING
-        )
+            Scene.objects.filter(project=project).update(
+                media_status=MediaStatus.PENDING
+            )
         _eager_thread(group(
             run_image_stage.si(str(project.id), idx) for idx in scene_indices
         ).delay)
@@ -256,20 +258,19 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="regenerate-voiceovers")
     def regenerate_voiceovers(self, request, pk=None):
-        project = self._get_locked_project()
-        if project.status == Status.IMAGE_REVIEW:
-            return Response(
-                {"detail": "Cannot regenerate voiceovers during image review."},
-                status=status.HTTP_409_CONFLICT,
-            )
         voice = request.data.get("narrator_voice") or request.data.get("voice")
-        if isinstance(voice, str) and voice.strip():
-            project.narrator_voice = voice.strip()
-            project.save(update_fields=["narrator_voice", "updated_at"])
-
-        Scene.objects.filter(project=project).update(voice_status=VoiceStatus.PENDING)
-        project.stale = True
-        project.save(update_fields=["stale", "updated_at"])
+        with transaction.atomic():
+            project = self._get_locked_project()
+            if project.status == Status.IMAGE_REVIEW:
+                return Response(
+                    {"detail": "Cannot regenerate voiceovers during image review."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if isinstance(voice, str) and voice.strip():
+                project.narrator_voice = voice.strip()
+            Scene.objects.filter(project=project).update(voice_status=VoiceStatus.PENDING)
+            project.stale = True
+            project.save(update_fields=["narrator_voice", "stale", "updated_at"])
         _eager_thread(run_voice_stage.delay, str(project.id))
         return Response({"queued": 1}, status=status.HTTP_202_ACCEPTED)
 
@@ -277,11 +278,9 @@ class ProjectViewSet(viewsets.ModelViewSet):
     def approve_images(self, request, pk=None):
         with transaction.atomic():
             project = self._get_locked_project()
-            if project.status != Status.IMAGE_REVIEW:
-                return Response(
-                    {"detail": f"Cannot approve images from {project.status} state."},
-                    status=status.HTTP_409_CONFLICT,
-                )
+            if resp := _require_status(project, Status.IMAGE_REVIEW,
+                                       f"Cannot approve images from {project.status} state."):
+                return resp
             not_done = project.scenes.select_for_update().exclude(media_status=MediaStatus.DONE)
             if not_done.exists():
                 return Response(
@@ -297,13 +296,10 @@ class ProjectViewSet(viewsets.ModelViewSet):
     def reassemble(self, request, pk=None):
         with transaction.atomic():
             project = self._get_locked_project()
-            if project.status != Status.DONE:
-                return Response(
-                    {"detail": f"Cannot reassemble from {project.status} state."},
-                    status=status.HTTP_409_CONFLICT,
-                )
-            project.status = Status.VIDEO_GENERATING
-            project.save(update_fields=["status", "updated_at"])
+            if resp := _require_status(project, Status.DONE,
+                                       f"Cannot reassemble from {project.status} state."):
+                return resp
+            project.transition_status(Status.VIDEO_GENERATING)
         _eager_thread(run_assemble_stage.delay, str(project.id))
         return Response(self.get_serializer(project).data, status=status.HTTP_202_ACCEPTED)
 
@@ -325,6 +321,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
             after = 0
         logs = JobLog.objects.filter(project=project, id__gt=after).order_by("id")
         return Response(JobLogSerializer(logs, many=True).data)
+
 
 def _dispatch_refine_stage(project_id: str, instruction: str) -> None:
     _eager_thread(run_refine_stage.delay, project_id, instruction)
@@ -359,6 +356,7 @@ def _dispatch_generate_stage(project_id: str) -> None:
         ).on_error(error_sig)
 
     _eager_thread(lambda: canvas.apply_async())
+
 
 def _dispatch_voice_assembly(project_id: str) -> None:
     _eager_thread(chain(
@@ -463,16 +461,44 @@ class SceneViewSet(viewsets.GenericViewSet):
         return Response(self.get_serializer(scene).data)
 
     def partial_update(self, request, project_pk=None, index=None):
-        scene = self.get_object()
-        serializer = SceneUpdateSerializer(scene, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
+        with transaction.atomic():
+            scene = self._get_locked_scene(index)
+            serializer = SceneUpdateSerializer(scene, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            changed = set(serializer.validated_data.keys())
+            serializer.save()
+
+            # An edit desyncs the scene from any already-generated asset. Reset the
+            # affected asset's status so it regenerates, and flag the project stale
+            # if a final video already exists — otherwise the prompt/narration would
+            # silently diverge from the rendered image/voiceover/final.mp4.
+            image_fields = {"media_prompt", "animate", "negative_prompt"}
+            status_fields = []
+            if changed & image_fields and scene.media_status != MediaStatus.PENDING:
+                scene.media_status = MediaStatus.PENDING
+                status_fields.append("media_status")
+            if "narration" in changed and scene.voice_status != VoiceStatus.PENDING:
+                scene.voice_status = VoiceStatus.PENDING
+                status_fields.append("voice_status")
+            if status_fields:
+                scene.save(update_fields=[*status_fields, "updated_at"])
+
+            project = scene.project
+            if changed and project.status == Status.DONE and not project.stale:
+                project.stale = True
+                project.save(update_fields=["stale", "updated_at"])
+
         return Response(SceneSerializer(scene, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["post"])
     def regenerate(self, request, project_pk=None, index=None):
         with transaction.atomic():
             scene = self._get_locked_scene(index)
+            if scene.compose:
+                return Response(
+                    {"detail": "this scene is a composition card, not an image — nothing to regenerate"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             prompt = request.data.get("prompt", "").strip()
             if prompt:
                 if resp := blocked_response(prompt, context="regenerate-image"):

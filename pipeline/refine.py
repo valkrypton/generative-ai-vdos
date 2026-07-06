@@ -37,6 +37,9 @@ def print_plan(plan: ShotPlan, work_dir: Path) -> None:
         print("-" * 72)
         print(f"scene {i}")
         print(f"  narration : {s.narration}")
+        if s.compose:
+            print(f"  compose   : {s.compose.template} — {s.compose.heading!r}")
+            continue
         chars = plan.characters_in(s.media_prompt)
         if chars:
             print(f"  chars     : {', '.join(chars)} (full descriptions substituted automatically)")
@@ -124,23 +127,27 @@ def main() -> None:
             work_dir = Path("output") / f"{name}-{time.strftime('%H%M%S')}"
         work_dir.mkdir(parents=True, exist_ok=True)
         (work_dir / "shot_plan.json").write_text(plan.model_dump_json(indent=2))
-        # mark the plan stage done so pipeline.run can also resume this dir
-        (work_dir / "state.json").write_text(json.dumps({"done": ["plan"]}, indent=2))
 
     # New plans get a polish pass automatically; existing plans only with --polish.
-    if args.polish or (not is_existing_plan and not args.no_polish):
-        from .script_agent import polish_image_prompts
-        print(f"polishing image prompts ({args.model})...")
-        plan = polish_image_prompts(plan, model=args.model)
-        (work_dir / "shot_plan.json").write_text(plan.model_dump_json(indent=2))
+    # Consistency review always runs on new plans (catches structural bugs like
+    # recurring objects missing from the characters list). animate=False here —
+    # pipeline.refine has no --animate flag, so plans start animation-free.
+    do_polish = args.polish or (not is_existing_plan and not args.no_polish)
+    do_review = args.polish or not is_existing_plan
+    if do_polish or do_review:
+        from .script_agent import refine_plan
+        plan = refine_plan(
+            plan, model=args.model, animate=False,
+            polish=do_polish, review=do_review,
+            on_write=lambda p: (work_dir / "shot_plan.json").write_text(p.model_dump_json(indent=2)),
+        )
 
-    # Consistency review always runs on new plans (catches structural bugs
-    # like recurring objects missing from the characters list).
-    if args.polish or not is_existing_plan:
-        from .script_agent import consistency_review
-        print(f"consistency review ({args.model})...")
-        plan = consistency_review(plan, model=args.model)
-        (work_dir / "shot_plan.json").write_text(plan.model_dump_json(indent=2))
+    if not is_existing_plan:
+        # Mark the plan stage done only after polish + consistency review have
+        # rewritten shot_plan.json — otherwise a crash mid-refinement would leave
+        # the dir flagged plan-complete with an unpolished plan and pipeline.run
+        # would skip the plan stage.
+        (work_dir / "state.json").write_text(json.dumps({"done": ["plan"]}, indent=2))
 
     print_plan(plan, work_dir)
 

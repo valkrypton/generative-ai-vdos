@@ -78,6 +78,7 @@ def scene_media_upload_path(instance: "Scene", filename) -> str:
 def scene_audio_upload_path(instance: "Scene", filename) -> str:
     return f"{instance.project.owner_id}/{instance.project.id}/audio/{filename}"
 
+
 def video_upload_path(instance: "Project", filename) -> str:
     return f"{instance.owner_id}/{instance.id}/videos/{filename}"
 
@@ -146,7 +147,10 @@ class Scene(TimestampMixin):
     )
     index          = models.IntegerField()
     narration      = models.TextField()
-    media_prompt   = models.TextField()
+    media_prompt   = models.TextField(blank=True, default="")
+    # Composition (Remotion text/motion card) spec — set instead of media_prompt.
+    # Shape mirrors pipeline.schema.ComposeSpec: {template, heading, subheading?, attribution?}.
+    compose        = models.JSONField(null=True, blank=True)
     on_screen_text = models.CharField(max_length=256, blank=True, default="")
     negative_prompt = models.TextField(max_length=256, blank=True, default="")
     animate        = models.BooleanField(default=False)

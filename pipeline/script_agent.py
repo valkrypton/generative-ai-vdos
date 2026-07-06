@@ -138,6 +138,31 @@ Motion (each still may be animated into a video clip):
 - For scenery or establishing shots: use slow camera drift or ambient movement:
   "slow upward tilt revealing the city skyline, gentle cloud drift, flags rippling".
 
+COMPOSITION CARDS (optional — title_card, quote, lower_third, outro; rendered as designed motion-text, not images):
+
+Some beats read better as clean designed text than as a generated photo. For those, set the
+scene's `compose` field INSTEAD of media_prompt (leave media_prompt unset; animate is ignored).
+Four templates:
+- title_card — a short opening title. Use for scene 1 when a titled open fits the topic
+  better than a photo hook (essays, meditations, explainer/list intros). Set
+  compose = {"template": "title_card", "heading": "<3-6 word title>", "subheading": "<optional short line>"}.
+- quote — a centered quotation. Use to open or close on a memorable line, or when the video
+  IS a quote. Set compose = {"template": "quote", "heading": "<the quote>", "attribution": "<who said it, optional>"}.
+- lower_third — a lower-left name/label with an optional role line. Use to introduce a
+  person, place, or key term the moment it first matters. Set
+  compose = {"template": "lower_third", "heading": "<name/label>", "subheading": "<optional role/detail>"}.
+- outro — a centered closing card. This is the natural home for the end call-to-action on
+  educational/listicle videos. Set
+  compose = {"template": "outro", "heading": "<closing line>", "subheading": "<optional CTA, e.g. 'Subscribe for more'>"}.
+
+Rules for compose scenes:
+- Still write narration — it is spoken while the card is on screen and sets the card's length.
+- Do NOT set media_prompt on a compose scene, and do NOT reference {characters} in it.
+- Use sparingly: at most one title_card (usually scene 1) and one closing card (quote or
+  outro) per video, plus the occasional lower_third. Keep most scenes image-driven.
+- When these rules ask for a call-to-action scene, prefer an `outro` compose scene over a
+  generated image.
+
 Dialogue and voices:
 - For narrator-style videos leave voice null everywhere (one narrator voice is used).
 - If scenes are spoken BY different characters (dialogue), set voice per scene to a
@@ -330,6 +355,8 @@ def polish_image_prompts(
         "Rewrite ONLY each scene's media_prompt field as an expert image-generation prompt, "
         "under ~60 words: add a shot type and camera angle, lighting, and a color/mood "
         "note, keeping the scene's subject and action unchanged. "
+        "SKIP any scene that has a `compose` field — leave it exactly as-is and do NOT "
+        "add a media_prompt to it. "
         "CRITICAL: Keep every {name} character placeholder EXACTLY as written — "
         "never expand them into descriptions, never reword, never remove them. "
         "The placeholder names MUST appear verbatim (e.g. {alice}, {bob}) so the "
@@ -392,10 +419,42 @@ def consistency_review(
         "outfit value repeats the full identity (face, hair, build, skin) from the "
         "character's description — only clothing should differ. Also verify that every "
         "scene after a clothing change sets the outfit field correctly.\n\n"
+        "8. COMPOSITION SCENES: Leave any scene that has a `compose` field exactly as-is — "
+        "do NOT add a media_prompt, characters, or animate to it, and do not treat its "
+        "heading/quote text as an image_prompt.\n\n"
         "Return the COMPLETE corrected plan with ALL fields intact. "
         "Only change what the checks above require.",
         model, provider=provider, api_key=api_key,
     )
+
+
+def refine_plan(
+    plan: ShotPlan,
+    *,
+    model: str = "claude-haiku-4-5",
+    animate: bool = False,
+    polish: bool = True,
+    review: bool = True,
+    on_write=None,
+) -> ShotPlan:
+    """Standard post-generation refinement: polish image prompts, then run the
+    consistency review — the sequence shared by pipeline.run and pipeline.refine.
+
+    ``animate`` is threaded into consistency_review so the review picks the same
+    animate-cap vs animation-disabled clause the generator used. ``on_write(plan)``
+    is called after each pass so callers can persist the intermediate plan.
+    """
+    if polish:
+        print(f"  polishing image prompts ({model})...")
+        plan = polish_image_prompts(plan, model=model)
+        if on_write:
+            on_write(plan)
+    if review:
+        print(f"  consistency review ({model})...")
+        plan = consistency_review(plan, model=model, animate=animate)
+        if on_write:
+            on_write(plan)
+    return plan
 
 
 def revise_shot_plan(
