@@ -180,7 +180,8 @@ def generate_scene_image(
         if not ref.is_file():
             raise RuntimeError(f"scene {index + 1}: reference_image not found: {ref}")
         editor = primary if hasattr(primary, "edit") else next(
-            (p for p in PROVIDERS if hasattr(p, "edit") and p.available()), None)
+            (p for p in PROVIDERS if hasattr(p, "edit")
+             and p.name not in AUTO_EXCLUDE and p.available()), None)
         if editor is None:
             raise RuntimeError("reference_image needs a backend with edit support "
                                "(gpt-image-1 — set OPENAI_API_KEY)")

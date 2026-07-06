@@ -1,3 +1,5 @@
+import { playfair } from "./fonts";
+
 // Palette shared by every composition template. The Python compose stage passes
 // a palette derived from the shot plan's `music_mood`, so cards feel connected to
 // the video they bookend. All fields are plain CSS colors.
@@ -10,14 +12,6 @@ export type Palette = {
   glow: string; // soft radial glow color (rgba)
 };
 
-export const DEFAULT_PALETTE: Palette = {
-  bg1: "#0f0b1e",
-  bg2: "#3a2740",
-  fg: "#f6ecd6",
-  accent: "#f0b563",
-  glow: "rgba(255,214,140,0.28)",
-};
-
 // Keep in sync with pipeline/compose/__init__.py MOOD_PALETTES.
 export const MOOD_PALETTES: Record<string, Palette> = {
   calm: { bg1: "#0d1b2a", bg2: "#2a4a5c", fg: "#eaf4f4", accent: "#8fd0c8", glow: "rgba(143,208,200,0.22)" },
@@ -27,6 +21,8 @@ export const MOOD_PALETTES: Record<string, Palette> = {
   inspiring: { bg1: "#0f0b1e", bg2: "#4a2f52", fg: "#f6ecd6", accent: "#f0b563", glow: "rgba(255,214,140,0.28)" },
 };
 
-import { playfair } from "./fonts";
+// Was a hand-copied literal that had already drifted from MOOD_PALETTES.inspiring
+// (mismatched bg2) — derive it instead so the two can't diverge again.
+export const DEFAULT_PALETTE: Palette = MOOD_PALETTES.inspiring;
 
 export const serifStack = `${playfair}, Georgia, "Times New Roman", Cambria, serif`;

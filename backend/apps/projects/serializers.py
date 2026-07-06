@@ -112,6 +112,18 @@ class SceneUpdateSerializer(ModeratedFieldsMixin, serializers.ModelSerializer):
         model = Scene
         fields = ["narration", "media_prompt", "animate", "on_screen_text", "negative_prompt"]
 
+    def validate(self, attrs):
+        is_compose = bool(self.instance and self.instance.compose)
+        if "media_prompt" in attrs and not attrs["media_prompt"] and not is_compose:
+            raise serializers.ValidationError(
+                {"media_prompt": "cannot be blank — this scene has no compose card to fall back on"}
+            )
+        if attrs.get("animate") and is_compose:
+            raise serializers.ValidationError(
+                {"animate": "composition cards can't be animated"}
+            )
+        return attrs
+
 
 class JobLogSerializer(serializers.ModelSerializer):
     class Meta:

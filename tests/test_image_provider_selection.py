@@ -6,8 +6,12 @@ import pytest
 import pipeline.images as images
 
 
-def test_get_provider_none_autopicks_first_available():
-    # With no API keys in the test env only PlaceholderProvider is available().
+def test_get_provider_none_autopicks_first_available(monkeypatch):
+    # Force every provider but placeholder unavailable so the assertion doesn't
+    # depend on which API keys happen to be set in the ambient environment.
+    for p in images.PROVIDERS:
+        monkeypatch.setattr(p, "available", (lambda: True) if p.name == "placeholder"
+                            else (lambda: False))
     assert images.get_provider(None).name == "placeholder"
 
 

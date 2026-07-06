@@ -494,6 +494,11 @@ class SceneViewSet(viewsets.GenericViewSet):
     def regenerate(self, request, project_pk=None, index=None):
         with transaction.atomic():
             scene = self._get_locked_scene(index)
+            if scene.compose:
+                return Response(
+                    {"detail": "this scene is a composition card, not an image — nothing to regenerate"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             prompt = request.data.get("prompt", "").strip()
             if prompt:
                 if resp := blocked_response(prompt, context="regenerate-image"):

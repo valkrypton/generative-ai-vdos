@@ -216,9 +216,11 @@ def run_video_stage(self, project_id, scene_index=None):
         return {"project_id": str(project_id)}
 
     if scene_index is not None:
-        animated = list(Scene.objects.filter(project=project, index=scene_index, animate=True))
+        animated = list(Scene.objects.filter(
+            project=project, index=scene_index, animate=True, compose__isnull=True))
     else:
-        animated = list(Scene.objects.filter(project=project, animate=True).order_by("index"))
+        animated = list(Scene.objects.filter(
+            project=project, animate=True, compose__isnull=True).order_by("index"))
 
     if not animated:
         publish_event(project_id, Stage.VIDEO, Level.INFO, "No animated scenes — skipping")

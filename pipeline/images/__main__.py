@@ -33,6 +33,10 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if args.scene is not None:
+        if plan.scenes[args.scene].compose:
+            print(f"scene {args.scene} is a compose card "
+                  f"({plan.scenes[args.scene].compose.template}) — no image to regenerate")
+            return
         primary = get_provider(args.backend)
         # Reuse (or rebuild only the missing) character reference portraits so a
         # single-scene regen keeps the same faces/outfits as the rest of the video,

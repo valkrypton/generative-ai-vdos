@@ -1,6 +1,6 @@
 """The shot plan — the contract every downstream stage consumes."""
 import re
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import AliasChoices, BaseModel, Field, model_validator
 
@@ -49,7 +49,7 @@ class ComposeSpec(BaseModel):
     image generation. Renders straight into the video/scene_NN.mp4 slot the FFmpeg
     assembler already prefers, so it needs no image and no animate credit."""
 
-    template: str = Field(
+    template: Literal["title_card", "quote", "lower_third", "outro"] = Field(
         description="Which Remotion template renders this scene: "
         "'title_card' (an intro title with an optional supporting line), "
         "'quote' (a centered quotation with an optional attribution), "
@@ -69,15 +69,6 @@ class ComposeSpec(BaseModel):
         default=None,
         description="quote only: who said it, e.g. 'Rumi' (rendered as '— Rumi').",
     )
-
-    @model_validator(mode="after")
-    def check_template(self) -> "ComposeSpec":
-        allowed = {"title_card", "quote", "lower_third", "outro"}
-        if self.template not in allowed:
-            raise ValueError(
-                f"compose.template must be one of {sorted(allowed)}, got {self.template!r}"
-            )
-        return self
 
 
 class Scene(BaseModel):
@@ -141,6 +132,10 @@ class Scene(BaseModel):
                 "each scene needs a visual source: set media_prompt (image scene) "
                 "or compose (title_card / quote card)"
             )
+        if self.compose:
+            # compose scenes have no source image to animate — enforce the "animate
+            # is ignored" contract in code rather than relying on the LLM prompt.
+            self.animate = False
         return self
 
 
@@ -178,12 +173,14 @@ class ShotPlan(BaseModel):
                 self.scenes[i].animate = False
         return self
 
-    def characters_in(self, text: str, *, by_position: bool = False) -> List[str]:
+    def characters_in(self, text: str | None, *, by_position: bool = False) -> List[str]:
         """Names of characters referenced in text (via {placeholder} or bare name).
 
         Default order follows self.characters; with by_position=True, names are
         sorted by their first appearance position in text.
         """
+        if not text:
+            return []
         found: list[tuple[int, str]] = []
         for c in self.characters:
             pattern = r"\{" + re.escape(c.name) + r"\}|\b" + re.escape(c.name) + r"\b"
@@ -196,7 +193,7 @@ class ShotPlan(BaseModel):
 
     def expand(
         self,
-        text: str,
+        text: str | None,
         max_chars: int = MAX_PROMPT_CHARS,
         scene_outfit: dict[str, str] | None = None,
         *,
@@ -221,7 +218,11 @@ class ShotPlan(BaseModel):
         budget so the compacting pass triggers at the right threshold. Callers
         that do not prepend style_prefix (motion prompts, refine display, …)
         should leave it False to avoid premature compaction.
+
+        Returns "" for compose scenes (media_prompt/motion is None).
         """
+        if not text:
+            return ""
         scene_outfit = scene_outfit or {}
         budget = max_chars
         if include_style_overhead:

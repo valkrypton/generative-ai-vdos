@@ -51,11 +51,14 @@ def _remotion_dir() -> Path:
 def _audio_duration(mp3: Path) -> Optional[float]:
     if not mp3.is_file():
         return None
-    out = subprocess.run(
-        ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
-         "-of", "csv=p=0", str(mp3)],
-        capture_output=True, text=True,
-    )
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+             "-of", "csv=p=0", str(mp3)],
+            capture_output=True, text=True, timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return None
     try:
         return float(out.stdout.strip())
     except (ValueError, AttributeError):
@@ -131,8 +134,13 @@ def render_compositions(plan: ShotPlan, work_dir: Path) -> list[Path]:
         ]
         print(f"  compose: scene {i + 1}/{len(plan.scenes)} "
               f"({template}, {seconds:.1f}s) -> {out_path.name}")
-        result = subprocess.run(cmd, cwd=str(remotion_dir),
-                                capture_output=True, text=True)
+        try:
+            result = subprocess.run(cmd, cwd=str(remotion_dir),
+                                    capture_output=True, text=True, timeout=300)
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError(
+                f"remotion render timed out for scene {i} ({template}) after "
+                f"{e.timeout:.0f}s") from e
         if result.returncode != 0:
             raise RuntimeError(
                 f"remotion render failed for scene {i} ({template}):\n"

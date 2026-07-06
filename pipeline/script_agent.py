@@ -138,7 +138,7 @@ Motion (each still may be animated into a video clip):
 - For scenery or establishing shots: use slow camera drift or ambient movement:
   "slow upward tilt revealing the city skyline, gentle cloud drift, flags rippling".
 
-COMPOSITION CARDS (optional — title_card and quote, rendered as designed motion-text, not images):
+COMPOSITION CARDS (optional — title_card, quote, lower_third, outro; rendered as designed motion-text, not images):
 
 Some beats read better as clean designed text than as a generated photo. For those, set the
 scene's `compose` field INSTEAD of media_prompt (leave media_prompt unset; animate is ignored).

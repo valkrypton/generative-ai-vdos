@@ -37,6 +37,9 @@ def print_plan(plan: ShotPlan, work_dir: Path) -> None:
         print("-" * 72)
         print(f"scene {i}")
         print(f"  narration : {s.narration}")
+        if s.compose:
+            print(f"  compose   : {s.compose.template} — {s.compose.heading!r}")
+            continue
         chars = plan.characters_in(s.media_prompt)
         if chars:
             print(f"  chars     : {', '.join(chars)} (full descriptions substituted automatically)")

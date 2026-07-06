@@ -7,7 +7,7 @@ over a Ken Burns still, so nothing downstream changes. Cost: **$0** (local headl
 
 ## How it fits the pipeline
 
-```
+```text
 plan → images → animate → voice → compose → assemble
                                    ^^^^^^^  (this)
 ```
